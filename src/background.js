@@ -600,7 +600,7 @@ async function renderPdfPageFromUrl(pdfTarget, settings) {
   const renderMaxEdge = clampInteger(settings.imageMaxEdge, 320, 4096, DEFAULT_SETTINGS.imageMaxEdge);
   const responseMessage = await chrome.runtime.sendMessage({
     type: "render-pdf-page-to-image",
-    pdfData,
+    pdfDataUrl: arrayBufferToDataUrl(pdfData, "application/pdf"),
     pageNumber: pdfTarget.pageNumber,
     maxEdge: renderMaxEdge
   });
@@ -681,6 +681,16 @@ function isPdfResponse(response, arrayBuffer) {
 
   const header = new TextDecoder("ascii").decode(new Uint8Array(arrayBuffer.slice(0, 5)));
   return header === "%PDF-";
+}
+
+function arrayBufferToDataUrl(arrayBuffer, mediaType) {
+  const bytes = new Uint8Array(arrayBuffer);
+  const chunkSize = 0x8000;
+  let binary = "";
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
+  }
+  return `data:${mediaType};base64,${btoa(binary)}`;
 }
 
 async function ensureContentScript(tabId) {

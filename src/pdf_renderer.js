@@ -11,9 +11,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   return true;
 });
 
-async function renderPdfPageToImage({ pdfData, pageNumber, maxEdge }) {
+async function renderPdfPageToImage({ pdfDataUrl, pageNumber, maxEdge }) {
+  const pdfData = dataUrlToBytes(pdfDataUrl);
   const loadingTask = pdfjsLib.getDocument({
-    data: new Uint8Array(pdfData),
+    data: pdfData,
     useWorkerFetch: false,
     isEvalSupported: false
   });
@@ -46,4 +47,18 @@ function clampInteger(value, min, max, fallback) {
   const number = Number.parseInt(value, 10);
   if (!Number.isFinite(number)) return fallback;
   return Math.min(max, Math.max(min, number));
+}
+
+function dataUrlToBytes(dataUrl) {
+  const match = /^data:[^;,]+;base64,(.+)$/.exec(String(dataUrl || ""));
+  if (!match) {
+    throw new Error("PDF data URL is invalid.");
+  }
+
+  const binary = atob(match[1]);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
 }
