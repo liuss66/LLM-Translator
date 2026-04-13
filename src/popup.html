@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>LLM Translator</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main>
+      <h1>LLM Translator</h1>
+      <button id="translate-selection" type="button" title="Shortcut: Alt+T">Text</button>
+      <button id="translate-region" type="button" title="Shortcut: Alt+S">Screenshot</button>
+      <label class="preset-row">
+        <span>Model</span>
+        <select id="model-preset">
+          <option value="">Current</option>
+        </select>
+      </label>
+      <div class="toggle-actions">
+        <label class="toggle-row">
+          <input id="show-ocr-result" type="checkbox">
+          <span class="toggle-ui" aria-hidden="true"></span>
+          <span>OCR text</span>
+        </label>
+        <label class="toggle-row">
+          <input id="enable-thinking" type="checkbox">
+          <span class="toggle-ui" aria-hidden="true"></span>
+          <span>Thinking</span>
+        </label>
+      </div>
+      <button id="open-side-panel" type="button" title="Shortcut: Alt+Shift+Y">Side panel</button>
+      <button id="open-options" type="button" class="secondary" title="Open settings">Options</button>
+      <p id="status" role="status"></p>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>

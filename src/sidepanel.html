@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>LLM Translator Side Panel</title>
+    <link rel="stylesheet" href="vendor/katex/katex.min.css">
+    <link rel="stylesheet" href="sidepanel.css">
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>LLM Translator</h1>
+        <button id="open-options" type="button">Options</button>
+      </header>
+
+      <div class="actions">
+        <button id="translate-selection" type="button">Text</button>
+        <button id="translate-region" type="button">Screenshot</button>
+        <label class="preset-row">
+          <span>Model</span>
+          <select id="model-preset">
+            <option value="">Current</option>
+          </select>
+        </label>
+        <div class="toggle-actions">
+          <label class="toggle-row">
+            <input id="show-ocr-result" type="checkbox">
+            <span class="toggle-ui" aria-hidden="true"></span>
+            <span>OCR text</span>
+          </label>
+          <label class="toggle-row">
+            <input id="enable-thinking" type="checkbox">
+            <span class="toggle-ui" aria-hidden="true"></span>
+            <span>Thinking</span>
+          </label>
+        </div>
+      </div>
+
+      <section class="result" aria-live="polite">
+        <h2 id="result-title">No translation yet</h2>
+        <div id="result-image"></div>
+        <div id="result-source"></div>
+        <div id="result-translation"></div>
+      </section>
+
+      <section class="chat">
+        <h2>Ask about screenshot</h2>
+        <div id="chat-log"></div>
+        <form id="chat-form">
+          <textarea
+            id="chat-input"
+            rows="3"
+            placeholder="Ask a question after screenshot translation"
+          ></textarea>
+          <button type="submit">Ask</button>
+        </form>
+      </section>
+
+      <p id="status" role="status"></p>
+    </main>
+    <script src="vendor/katex/katex.min.js"></script>
+    <script src="markdown.js"></script>
+    <script src="sidepanel.js"></script>
+  </body>
+</html>

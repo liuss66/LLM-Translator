@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>LLM Translator Options</title>
+    <link rel="stylesheet" href="options.css">
+  </head>
+  <body>
+    <main class="page">
+      <h1>LLM Translator</h1>
+      <p>填写模型服务配置。设置保存在 Chrome 同步存储中。</p>
+
+      <form id="settings-form">
+        <section class="preset-panel">
+          <h2>Model presets</h2>
+          <div class="preset-grid">
+            <label>
+              Preset
+              <select id="preset-select">
+                <option value="">No preset</option>
+              </select>
+            </label>
+            <label>
+              Name
+              <input id="preset-name" type="text" placeholder="Work GPT / Local Qwen">
+            </label>
+          </div>
+          <div class="preset-actions">
+            <button type="button" id="save-preset" class="secondary">Save preset</button>
+            <button type="button" id="load-preset" class="secondary">Load preset</button>
+            <button type="button" id="delete-preset" class="secondary danger">Delete preset</button>
+          </div>
+        </section>
+
+        <label>
+          Provider
+          <select name="provider">
+            <option value="openai">OpenAI-compatible</option>
+            <option value="anthropic">Anthropic</option>
+            <option value="llamacpp">llama.cpp server</option>
+          </select>
+        </label>
+
+        <label>
+          API Base URL
+          <input name="apiBaseUrl" type="url" placeholder="https://api.openai.com/v1" required>
+        </label>
+
+        <label>
+          API Key
+          <input name="apiKey" type="password" autocomplete="off" placeholder="OpenAI/Anthropic required; llama.cpp optional">
+        </label>
+
+        <label>
+          Text model
+          <input name="textModel" type="text" placeholder="gpt-4o-mini" required>
+        </label>
+
+        <label>
+          Vision model
+          <input name="visionModel" type="text" placeholder="gpt-4o-mini" required>
+        </label>
+
+        <label>
+          Target language
+          <input name="targetLanguage" type="text" placeholder="中文" required>
+        </label>
+
+        <label class="checkbox-row">
+          <input name="showOcrResult" type="checkbox">
+          Show OCR text for screenshot translation
+        </label>
+
+        <label class="checkbox-row">
+          <input name="enableThinking" type="checkbox">
+          Enable model thinking
+        </label>
+
+        <label>
+          System prompt
+          <textarea name="systemPrompt" rows="5"></textarea>
+        </label>
+
+        <div class="actions">
+          <button type="submit">Save settings</button>
+          <button type="button" id="test-model" class="secondary">Test model</button>
+          <button type="button" id="open-shortcuts" class="secondary">Keyboard shortcuts</button>
+          <span id="status" role="status"></span>
+        </div>
+      </form>
+    </main>
+    <script src="options.js"></script>
+  </body>
+</html>
