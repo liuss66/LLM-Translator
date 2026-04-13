@@ -6,6 +6,8 @@
 
   let resultPanel;
   let selectionLayer;
+  let currentResultRunId = "";
+  let dismissedResultRunId = "";
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message?.type === "ping") {
@@ -30,7 +32,7 @@
     }
 
     if (message?.type === "hide-translation") {
-      hideResultPanel();
+      hideResultPanel({ dismissCurrentRun: true });
       sendResponse({ ok: true });
     }
   });
@@ -38,11 +40,17 @@
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
       removeSelectionLayer();
-      hideResultPanel();
+      hideResultPanel({ dismissCurrentRun: true });
     }
   });
 
   function showTranslation(payload) {
+    const runId = getResultRunId(payload);
+    if (runId && runId === dismissedResultRunId) {
+      return;
+    }
+    currentResultRunId = runId;
+
     if (!resultPanel) {
       resultPanel = document.createElement("aside");
       resultPanel.className = "llmt-panel";
@@ -63,10 +71,10 @@
       `;
       resultPanel
         .querySelector(".llmt-panel__close")
-        .addEventListener("click", hideResultPanel);
+        .addEventListener("click", () => hideResultPanel({ dismissCurrentRun: true }));
       resultPanel.querySelector(".llmt-panel__side").addEventListener("click", () => {
         chrome.runtime.sendMessage({ type: "open-side-panel" });
-        hideResultPanel();
+        hideResultPanel({ dismissCurrentRun: true });
       });
       document.documentElement.append(resultPanel);
     }
@@ -107,10 +115,21 @@
     return `${Math.round(totalSeconds)}s`;
   }
 
-  function hideResultPanel() {
+  function hideResultPanel({ dismissCurrentRun = false } = {}) {
     if (resultPanel) {
       resultPanel.hidden = true;
     }
+    if (dismissCurrentRun && currentResultRunId) {
+      dismissedResultRunId = currentResultRunId;
+      chrome.runtime.sendMessage({ type: "floating-panel-closed", runId: currentResultRunId }).catch(() => {});
+    }
+  }
+
+  function getResultRunId(payload) {
+    if (payload?.startedAt) {
+      return String(payload.startedAt);
+    }
+    return "";
   }
 
   function startRegionSelection() {

@@ -124,6 +124,16 @@ document.querySelector("#translate-region").addEventListener("click", async () =
   }
 });
 
+document.querySelector("#translate-page").addEventListener("click", async () => {
+  try {
+    const response = await chrome.runtime.sendMessage({ type: "translate-current-page" });
+    if (!response?.ok) throw new Error(response?.error || "Failed to translate current page.");
+    window.close();
+  } catch (error) {
+    status.textContent = error.message || "Failed to translate current page.";
+  }
+});
+
 document.querySelector("#open-side-panel").addEventListener("click", async () => {
   try {
     const openPromise = chrome.sidePanel.open({ windowId: chrome.windows.WINDOW_ID_CURRENT });

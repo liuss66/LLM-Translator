@@ -73,8 +73,12 @@ h2 {
 
 .primary-actions {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
+}
+
+.primary-actions button {
+  padding-inline: 6px;
 }
 
 .preset-row {

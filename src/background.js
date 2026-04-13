@@ -31,6 +31,7 @@ const MODEL_SETTING_KEYS = [
 
 const MENU_TRANSLATE_SELECTION = "translate-selection";
 const MENU_TRANSLATE_SCREENSHOT = "translate-screenshot-region";
+const MENU_TRANSLATE_PAGE = "translate-current-page";
 let lastResult = null;
 const sidePanelPorts = new Set();
 
@@ -57,6 +58,12 @@ chrome.runtime.onInstalled.addListener(async () => {
     contexts: ["page", "selection", "image"]
   });
 
+  chrome.contextMenus.create({
+    id: MENU_TRANSLATE_PAGE,
+    title: "Translate current page screenshot",
+    contexts: ["page", "selection", "image"]
+  });
+
   if (chrome.sidePanel?.setPanelBehavior) {
     await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false });
   }
@@ -73,6 +80,11 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 
   if (info.menuItemId === MENU_TRANSLATE_SCREENSHOT) {
     runForTab(tab.id, () => startRegionSelection(tab.id));
+    return;
+  }
+
+  if (info.menuItemId === MENU_TRANSLATE_PAGE) {
+    runForTab(tab.id, () => translateCurrentPage(tab.id, tab.windowId));
   }
 });
 
@@ -89,6 +101,11 @@ chrome.commands.onCommand.addListener(async (command) => {
 
   if (command === MENU_TRANSLATE_SCREENSHOT) {
     runForTab(tab.id, () => startRegionSelection(tab.id));
+    return;
+  }
+
+  if (command === MENU_TRANSLATE_PAGE) {
+    runForTab(tab.id, () => translateCurrentPage(tab.id, tab.windowId));
     return;
   }
 
@@ -162,6 +179,14 @@ async function handleMessage(message, sender) {
     return { ok: true };
   }
 
+  if (message?.type === "translate-current-page") {
+    const tab = await getActiveTab();
+    await runForTab(tab.id, async () => {
+      await translateCurrentPage(tab.id, tab.windowId);
+    });
+    return { ok: true };
+  }
+
   if (message?.type === "translate-active-selection") {
     const tabId = await getActiveTabId();
     await runForTab(tabId, async () => {
@@ -182,6 +207,10 @@ async function handleMessage(message, sender) {
     if (message.tabId) {
       await hideFloatingPanel(message.tabId);
     }
+    return { ok: true };
+  }
+
+  if (message?.type === "floating-panel-closed") {
     return { ok: true };
   }
 
@@ -246,9 +275,14 @@ async function handleMessage(message, sender) {
 }
 
 async function getActiveTabId() {
+  return (await getActiveTab()).id;
+}
+
+async function getActiveTab() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab?.id) throw new Error("No active tab found.");
-  return tab.id;
+  if (!tab.windowId) throw new Error("No active window found.");
+  return tab;
 }
 
 async function runForTab(tabId, task) {
@@ -396,40 +430,66 @@ async function translateScreenshotRegion(tabId, windowId, rect) {
 
   const dataUrl = await chrome.tabs.captureVisibleTab(windowId, { format: "png" });
   const croppedDataUrl = await cropDataUrl(dataUrl, rect);
-  const settings = await getSettings();
-  const preparedImage = await prepareImageForModel(croppedDataUrl, settings);
-  await showResult(tabId, {
-    title: "Recognizing...",
+  await translateScreenshotImage(tabId, croppedDataUrl, {
     source: "Selected screen region",
+    initialTitle: "Recognizing...",
+    startedAt
+  });
+}
+
+async function translateCurrentPage(tabId, windowId) {
+  const startedAt = Date.now();
+  await showResult(tabId, {
+    title: "Recognizing current page...",
+    source: "",
+    translation: "Capturing the current visible page and asking the model to read it.",
+    startedAt,
+    isStreaming: true
+  });
+
+  const dataUrl = await chrome.tabs.captureVisibleTab(windowId, { format: "png" });
+  await translateScreenshotImage(tabId, dataUrl, {
+    source: "Current visible page",
+    initialTitle: "Recognizing current page...",
+    startedAt
+  });
+}
+
+async function translateScreenshotImage(tabId, imageDataUrl, options) {
+  const settings = await getSettings();
+  const preparedImage = await prepareImageForModel(imageDataUrl, settings);
+  await showResult(tabId, {
+    title: options.initialTitle,
+    source: options.source,
     translation: "Waiting for model response.",
     imageUrl: preparedImage.dataUrl,
     showInputImage: settings.showInputImage,
     imageInfo: preparedImage.info,
-    startedAt,
+    startedAt: options.startedAt,
     isStreaming: true
   });
   const translation = await translateImage(settings, preparedImage.dataUrl, async (partial) => {
     await showResult(tabId, {
       title: `OCR translating to ${settings.targetLanguage}...`,
-      source: "Selected screen region",
+      source: options.source,
       translation: removeReasoningBlocks(partial, settings),
       imageUrl: preparedImage.dataUrl,
       showInputImage: settings.showInputImage,
       imageInfo: preparedImage.info,
-      startedAt,
+      startedAt: options.startedAt,
       isStreaming: true
     });
   });
 
   await showResult(tabId, {
     title: `OCR translated to ${settings.targetLanguage}`,
-    source: "Selected screen region",
+    source: options.source,
     translation: removeReasoningBlocks(translation, settings),
     imageUrl: preparedImage.dataUrl,
     showInputImage: settings.showInputImage,
     imageInfo: preparedImage.info,
-    startedAt,
-    elapsedMs: Date.now() - startedAt
+    startedAt: options.startedAt,
+    elapsedMs: Date.now() - options.startedAt
   });
 }
 
@@ -462,7 +522,7 @@ async function showResult(tabId, payload) {
   };
   await chrome.storage.session.set({ lastResult });
   chrome.runtime.sendMessage({ type: "last-result-updated", result: lastResult }).catch(() => {});
-  if (sidePanelPorts.size > 0) {
+  if (await isSidePanelOpen()) {
     await hideFloatingPanel(tabId);
     return;
   }
@@ -471,6 +531,12 @@ async function showResult(tabId, payload) {
     type: "show-translation",
     payload
   });
+}
+
+async function isSidePanelOpen() {
+  if (sidePanelPorts.size > 0) return true;
+  const { sidePanelOpen } = await chrome.storage.session.get("sidePanelOpen");
+  return Boolean(sidePanelOpen);
 }
 
 async function getSettings() {
@@ -558,7 +624,7 @@ async function translateImage(settings, imageDataUrl, onUpdate) {
     {
       role: "system",
       content:
-        "You are an OCR and translation assistant. Read all visible text in the image, then translate it accurately into the requested target language. Do not merely repeat the source text. Preserve line breaks, tables, code, and mathematical formulas when useful. Keep formulas in LaTeX delimiters such as $...$ or $$...$$."
+        "You are an OCR and translation assistant. Read all visible document text in the image, then translate it accurately into the requested target language. Ignore browser UI, PDF viewer controls, scrollbars, page margins, and extension UI if present. Do not merely repeat the source text. Preserve line breaks, tables, code, and mathematical formulas when useful. Keep formulas in LaTeX delimiters such as $...$ or $$...$$."
     },
     {
       role: "user",

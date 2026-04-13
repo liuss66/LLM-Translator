@@ -51,6 +51,12 @@
       },
       "description": "Select a screen region and translate it"
     },
+    "translate-current-page": {
+      "suggested_key": {
+        "default": "Alt+A"
+      },
+      "description": "Translate the current visible page"
+    },
     "open-side-panel": {
       "suggested_key": {
         "default": "Alt+Shift+Y"

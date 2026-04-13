@@ -86,6 +86,10 @@ document.querySelector("#translate-region").addEventListener("click", async () =
   await sendAction({ type: "start-region-selection" }, "Select an area in the active tab.");
 });
 
+document.querySelector("#translate-page").addEventListener("click", async () => {
+  await sendAction({ type: "translate-current-page" }, "Translating current visible page...");
+});
+
 copyTranslation.addEventListener("click", async () => {
   await copyText(currentResult?.translation || translation.innerText || "", copyTranslation);
 });
