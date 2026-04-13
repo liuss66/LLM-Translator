@@ -106,6 +106,12 @@
     if (payload.isStreaming) {
       parts.push("流式输出中");
     }
+    if (payload.imageInfo?.renderMode) {
+      parts.push(payload.imageInfo.renderMode);
+    }
+    if (payload.imageInfo?.fallbackReason) {
+      parts.push(`回退原因: ${payload.imageInfo.fallbackReason}`);
+    }
     return parts.join(" · ");
   }
 

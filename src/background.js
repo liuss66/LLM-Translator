@@ -187,6 +187,16 @@ async function handleMessage(message, sender) {
     return { ok: true };
   }
 
+  if (message?.type === "debug-pdf-target") {
+    const tab = await getActiveTab();
+    return {
+      ok: true,
+      tabUrl: tab.url || "",
+      pdfTarget: getPdfRenderTarget(tab.url || ""),
+      probablyPdfViewer: isProbablyPdfViewerUrl(tab.url || "")
+    };
+  }
+
   if (message?.type === "translate-active-selection") {
     const tabId = await getActiveTabId();
     await runForTab(tabId, async () => {
@@ -449,26 +459,56 @@ async function translateCurrentPage(tabId, windowId) {
 
   const tab = await chrome.tabs.get(tabId).catch(() => null);
   const pdfTarget = getPdfRenderTarget(tab?.url || "");
+  let fallbackReason = "";
   if (pdfTarget) {
     try {
       const settings = await getSettings();
+      await showResult(tabId, {
+        title: "Rendering PDF page...",
+        source: pdfTarget.url,
+        translation: `Trying PDF.js rendering for page ${pdfTarget.pageNumber}.`,
+        startedAt,
+        isStreaming: true
+      });
       const renderedPage = await renderPdfPageFromUrl(pdfTarget, settings);
       await translateScreenshotImage(tabId, renderedPage.dataUrl, {
         source: `PDF page ${renderedPage.pageNumber} of ${renderedPage.pageCount}`,
         initialTitle: "Recognizing PDF page...",
-        startedAt
+        startedAt,
+        renderMode: "PDF.js"
       });
       return;
     } catch (error) {
+      const message = error.message || "PDF rendering failed.";
+      fallbackReason = message;
       console.warn("PDF rendering failed; falling back to visible tab capture.", error);
+      await showResult(tabId, {
+        title: "PDF rendering unavailable",
+        source: pdfTarget.url,
+        translation: `${message}\n\nFalling back to current visible page screenshot.`,
+        startedAt,
+        isStreaming: true
+      });
     }
+  } else if (isProbablyPdfViewerUrl(tab?.url || "")) {
+    fallbackReason = "PDF URL was not accessible to the extension.";
+    await showResult(tabId, {
+      title: "PDF URL not accessible",
+      source: tab?.url || "",
+      translation:
+        "This PDF viewer page does not expose a direct .pdf URL to the extension. Falling back to current visible page screenshot.",
+      startedAt,
+      isStreaming: true
+    });
   }
 
   const dataUrl = await chrome.tabs.captureVisibleTab(windowId, { format: "png" });
   await translateScreenshotImage(tabId, dataUrl, {
     source: "Current visible page",
     initialTitle: "Recognizing current page...",
-    startedAt
+    startedAt,
+    renderMode: "Visible screenshot",
+    fallbackReason
   });
 }
 
@@ -482,8 +522,14 @@ function getPdfRenderTarget(tabUrl) {
     return null;
   }
 
-  const embeddedPdfUrl = url.searchParams.get("src");
-  const pdfUrl = embeddedPdfUrl || tabUrl;
+  const embeddedPdfUrl =
+    url.searchParams.get("src") ||
+    url.searchParams.get("file") ||
+    url.searchParams.get("url") ||
+    url.searchParams.get("pdf") ||
+    readPdfUrlFromHash(url.hash);
+  const pdfUrl = embeddedPdfUrl || (isDirectPdfUrl(url) ? tabUrl : "");
+  if (!pdfUrl) return null;
   let parsedPdfUrl;
   try {
     parsedPdfUrl = new URL(pdfUrl);
@@ -491,13 +537,37 @@ function getPdfRenderTarget(tabUrl) {
     return null;
   }
 
-  const looksLikePdf = /\.pdf(?:$|[?#])/i.test(parsedPdfUrl.href) || parsedPdfUrl.pathname.toLowerCase().endsWith(".pdf");
-  if (!looksLikePdf) return null;
-
   return {
     url: parsedPdfUrl.href,
     pageNumber: readPdfPageNumber(url.hash) || readPdfPageNumber(parsedPdfUrl.hash) || 1
   };
+}
+
+function isDirectPdfUrl(url) {
+  return (
+    ["http:", "https:", "file:"].includes(url.protocol) &&
+    (/\.pdf(?:$|[?#])/i.test(url.href) || url.pathname.toLowerCase().endsWith(".pdf"))
+  );
+}
+
+function readPdfUrlFromHash(hash) {
+  if (!hash) return "";
+  const paramsText = hash.startsWith("#") ? hash.slice(1) : hash;
+  const params = new URLSearchParams(paramsText);
+  return params.get("src") || params.get("file") || params.get("url") || params.get("pdf") || "";
+}
+
+function isProbablyPdfViewerUrl(tabUrl) {
+  try {
+    const url = new URL(tabUrl);
+    return (
+      url.protocol === "chrome-extension:" ||
+      url.protocol === "chrome:" ||
+      /pdf|viewer/i.test(url.href)
+    );
+  } catch {
+    return false;
+  }
 }
 
 function readPdfPageNumber(hash) {
@@ -512,8 +582,21 @@ async function renderPdfPageFromUrl(pdfTarget, settings) {
     throw new Error(`PDF fetch failed (${response.status}).`);
   }
 
-  await ensurePdfRendererDocument();
   const pdfData = await response.arrayBuffer();
+  if (pdfData.byteLength === 0) {
+    throw new Error(
+      `Fetched 0 bytes from the PDF URL (${new URL(pdfTarget.url).protocol}). If this is a local file, enable file URL access for the extension; if it is an online PDF, open the direct PDF URL rather than the browser viewer wrapper.`
+    );
+  }
+  if (!isPdfResponse(response, pdfData)) {
+    throw new Error(
+      `The active tab did not return PDF bytes (${pdfData.byteLength} bytes, content-type: ${
+        response.headers.get("content-type") || "unknown"
+      }).`
+    );
+  }
+
+  await ensurePdfRendererDocument();
   const renderMaxEdge = clampInteger(settings.imageMaxEdge, 320, 4096, DEFAULT_SETTINGS.imageMaxEdge);
   const responseMessage = await chrome.runtime.sendMessage({
     type: "render-pdf-page-to-image",
@@ -550,13 +633,18 @@ async function ensurePdfRendererDocument() {
 async function translateScreenshotImage(tabId, imageDataUrl, options) {
   const settings = await getSettings();
   const preparedImage = await prepareImageForModel(imageDataUrl, settings);
+  const imageInfo = {
+    ...preparedImage.info,
+    renderMode: options.renderMode,
+    fallbackReason: options.fallbackReason
+  };
   await showResult(tabId, {
     title: options.initialTitle,
     source: options.source,
     translation: "Waiting for model response.",
     imageUrl: preparedImage.dataUrl,
     showInputImage: settings.showInputImage,
-    imageInfo: preparedImage.info,
+    imageInfo,
     startedAt: options.startedAt,
     isStreaming: true
   });
@@ -567,7 +655,7 @@ async function translateScreenshotImage(tabId, imageDataUrl, options) {
       translation: removeReasoningBlocks(partial, settings),
       imageUrl: preparedImage.dataUrl,
       showInputImage: settings.showInputImage,
-      imageInfo: preparedImage.info,
+      imageInfo,
       startedAt: options.startedAt,
       isStreaming: true
     });
@@ -579,10 +667,20 @@ async function translateScreenshotImage(tabId, imageDataUrl, options) {
     translation: removeReasoningBlocks(translation, settings),
     imageUrl: preparedImage.dataUrl,
     showInputImage: settings.showInputImage,
-    imageInfo: preparedImage.info,
+    imageInfo,
     startedAt: options.startedAt,
     elapsedMs: Date.now() - options.startedAt
   });
+}
+
+function isPdfResponse(response, arrayBuffer) {
+  const contentType = response.headers.get("content-type") || "";
+  if (/application\/pdf|application\/x-pdf/i.test(contentType)) {
+    return true;
+  }
+
+  const header = new TextDecoder("ascii").decode(new Uint8Array(arrayBuffer.slice(0, 5)));
+  return header === "%PDF-";
 }
 
 async function ensureContentScript(tabId) {

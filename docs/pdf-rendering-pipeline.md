@@ -22,6 +22,8 @@ This branch tests rendering a PDF page directly before OCR translation instead o
 - Local `file://` PDFs require the user to enable file access for the extension.
 - Authenticated PDFs depend on whether extension `fetch` can access the PDF URL with cookies.
 - Chrome's built-in PDF viewer does not always expose the current page number in the tab URL. Without `#page=N`, this experiment renders page 1.
+- Chrome/Edge PDF viewer wrapper URLs must expose a direct PDF URL in `src`, `file`, `url`, or `pdf`; otherwise the experiment falls back to visible screenshot capture.
+- A `Fetched 0 bytes` fallback usually means the extension could see a PDF-like URL but could not read the PDF body.
 - Some PDFs may need extra PDF.js assets such as CMaps, standard fonts, or wasm decoders. The experiment currently vendors only the core browser build and worker.
 
 ## Manual Test

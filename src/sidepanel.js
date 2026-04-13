@@ -411,9 +411,13 @@ function formatDuration(milliseconds) {
 function formatImageInfo(info) {
   const size = `${info.width}x${info.height}`;
   const original = `${info.originalWidth}x${info.originalHeight}`;
-  if (!info.compressed) return `图片 ${size} PNG`;
+  const renderMode = info.renderMode ? `${info.renderMode} · ` : "";
+  const fallbackReason = info.fallbackReason ? ` · 回退原因: ${info.fallbackReason}` : "";
+  if (!info.compressed) return `${renderMode}图片 ${size} PNG${fallbackReason}`;
   const quality = Math.round(Number(info.quality || 0) * 100);
-  return original === size ? `图片 ${size} JPEG ${quality}%` : `图片 ${original} -> ${size} JPEG ${quality}%`;
+  return original === size
+    ? `${renderMode}图片 ${size} JPEG ${quality}%${fallbackReason}`
+    : `${renderMode}图片 ${original} -> ${size} JPEG ${quality}%${fallbackReason}`;
 }
 
 function setStatus(message) {
