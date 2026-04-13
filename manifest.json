@@ -8,6 +8,7 @@
     "contextMenus",
     "clipboardRead",
     "clipboardWrite",
+    "offscreen",
     "sidePanel",
     "scripting",
     "storage",

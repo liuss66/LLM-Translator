@@ -447,11 +447,103 @@ async function translateCurrentPage(tabId, windowId) {
     isStreaming: true
   });
 
+  const tab = await chrome.tabs.get(tabId).catch(() => null);
+  const pdfTarget = getPdfRenderTarget(tab?.url || "");
+  if (pdfTarget) {
+    try {
+      const settings = await getSettings();
+      const renderedPage = await renderPdfPageFromUrl(pdfTarget, settings);
+      await translateScreenshotImage(tabId, renderedPage.dataUrl, {
+        source: `PDF page ${renderedPage.pageNumber} of ${renderedPage.pageCount}`,
+        initialTitle: "Recognizing PDF page...",
+        startedAt
+      });
+      return;
+    } catch (error) {
+      console.warn("PDF rendering failed; falling back to visible tab capture.", error);
+    }
+  }
+
   const dataUrl = await chrome.tabs.captureVisibleTab(windowId, { format: "png" });
   await translateScreenshotImage(tabId, dataUrl, {
     source: "Current visible page",
     initialTitle: "Recognizing current page...",
     startedAt
+  });
+}
+
+function getPdfRenderTarget(tabUrl) {
+  if (!tabUrl) return null;
+
+  let url;
+  try {
+    url = new URL(tabUrl);
+  } catch {
+    return null;
+  }
+
+  const embeddedPdfUrl = url.searchParams.get("src");
+  const pdfUrl = embeddedPdfUrl || tabUrl;
+  let parsedPdfUrl;
+  try {
+    parsedPdfUrl = new URL(pdfUrl);
+  } catch {
+    return null;
+  }
+
+  const looksLikePdf = /\.pdf(?:$|[?#])/i.test(parsedPdfUrl.href) || parsedPdfUrl.pathname.toLowerCase().endsWith(".pdf");
+  if (!looksLikePdf) return null;
+
+  return {
+    url: parsedPdfUrl.href,
+    pageNumber: readPdfPageNumber(url.hash) || readPdfPageNumber(parsedPdfUrl.hash) || 1
+  };
+}
+
+function readPdfPageNumber(hash) {
+  const match = /(?:^|[#&])page=(\d+)/i.exec(hash || "");
+  if (!match) return 0;
+  return Number.parseInt(match[1], 10) || 0;
+}
+
+async function renderPdfPageFromUrl(pdfTarget, settings) {
+  const response = await fetch(pdfTarget.url, { credentials: "include" });
+  if (!response.ok) {
+    throw new Error(`PDF fetch failed (${response.status}).`);
+  }
+
+  await ensurePdfRendererDocument();
+  const pdfData = await response.arrayBuffer();
+  const renderMaxEdge = clampInteger(settings.imageMaxEdge, 320, 4096, DEFAULT_SETTINGS.imageMaxEdge);
+  const responseMessage = await chrome.runtime.sendMessage({
+    type: "render-pdf-page-to-image",
+    pdfData,
+    pageNumber: pdfTarget.pageNumber,
+    maxEdge: renderMaxEdge
+  });
+
+  if (!responseMessage?.ok) {
+    throw new Error(responseMessage?.error || "PDF rendering failed.");
+  }
+  return responseMessage.result;
+}
+
+async function ensurePdfRendererDocument() {
+  if (!chrome.offscreen?.createDocument) {
+    throw new Error("Offscreen documents are not available in this browser.");
+  }
+
+  const documentUrl = chrome.runtime.getURL("src/offscreen.html");
+  const contexts = await chrome.runtime.getContexts?.({
+    contextTypes: ["OFFSCREEN_DOCUMENT"],
+    documentUrls: [documentUrl]
+  });
+  if (contexts?.length) return;
+
+  await chrome.offscreen.createDocument({
+    url: "src/offscreen.html",
+    reasons: ["BLOBS"],
+    justification: "Render PDF pages to images for OCR translation."
   });
 }
 
