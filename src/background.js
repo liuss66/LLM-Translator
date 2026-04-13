@@ -577,38 +577,32 @@ function readPdfPageNumber(hash) {
 }
 
 async function renderPdfPageFromUrl(pdfTarget, settings) {
-  const response = await fetch(pdfTarget.url, { credentials: "include" });
-  if (!response.ok) {
-    throw new Error(`PDF fetch failed (${response.status}).`);
-  }
-
-  const pdfData = await response.arrayBuffer();
-  if (pdfData.byteLength === 0) {
-    throw new Error(
-      `Fetched 0 bytes from the PDF URL (${new URL(pdfTarget.url).protocol}). If this is a local file, enable file URL access for the extension; if it is an online PDF, open the direct PDF URL rather than the browser viewer wrapper.`
-    );
-  }
-  if (!isPdfResponse(response, pdfData)) {
-    throw new Error(
-      `The active tab did not return PDF bytes (${pdfData.byteLength} bytes, content-type: ${
-        response.headers.get("content-type") || "unknown"
-      }).`
-    );
-  }
-
   await ensurePdfRendererDocument();
   const renderMaxEdge = clampInteger(settings.imageMaxEdge, 320, 4096, DEFAULT_SETTINGS.imageMaxEdge);
-  const responseMessage = await chrome.runtime.sendMessage({
-    type: "render-pdf-page-to-image",
-    pdfDataUrl: arrayBufferToDataUrl(pdfData, "application/pdf"),
-    pageNumber: pdfTarget.pageNumber,
-    maxEdge: renderMaxEdge
-  });
+  const responseMessage = await withTimeout(
+    chrome.runtime.sendMessage({
+      type: "render-pdf-page-to-image",
+      pdfUrl: pdfTarget.url,
+      pageNumber: pdfTarget.pageNumber,
+      maxEdge: renderMaxEdge
+    }),
+    30000,
+    "PDF rendering timed out after 30 seconds."
+  );
 
   if (!responseMessage?.ok) {
     throw new Error(responseMessage?.error || "PDF rendering failed.");
   }
   return responseMessage.result;
+}
+
+function withTimeout(promise, timeoutMs, message) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      setTimeout(() => reject(new Error(message)), timeoutMs);
+    })
+  ]);
 }
 
 async function ensurePdfRendererDocument() {
@@ -671,26 +665,6 @@ async function translateScreenshotImage(tabId, imageDataUrl, options) {
     startedAt: options.startedAt,
     elapsedMs: Date.now() - options.startedAt
   });
-}
-
-function isPdfResponse(response, arrayBuffer) {
-  const contentType = response.headers.get("content-type") || "";
-  if (/application\/pdf|application\/x-pdf/i.test(contentType)) {
-    return true;
-  }
-
-  const header = new TextDecoder("ascii").decode(new Uint8Array(arrayBuffer.slice(0, 5)));
-  return header === "%PDF-";
-}
-
-function arrayBufferToDataUrl(arrayBuffer, mediaType) {
-  const bytes = new Uint8Array(arrayBuffer);
-  const chunkSize = 0x8000;
-  let binary = "";
-  for (let index = 0; index < bytes.length; index += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
-  }
-  return `data:${mediaType};base64,${btoa(binary)}`;
 }
 
 async function ensureContentScript(tabId) {
