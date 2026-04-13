@@ -6,7 +6,12 @@ const DEFAULT_SETTINGS = {
   visionModel: "gpt-4o-mini",
   targetLanguage: "中文",
   showOcrResult: false,
+  showInputImage: false,
+  compressInputImage: true,
+  imageMaxEdge: 1600,
+  imageJpegQuality: 0.88,
   enableThinking: false,
+  thinkingRequestFields: "enable_thinking\nchat_template_kwargs.enable_thinking",
   currentPresetId: "",
   modelPresets: [],
   systemPrompt:
@@ -20,6 +25,7 @@ const MODEL_SETTING_KEYS = [
   "visionModel",
   "targetLanguage",
   "enableThinking",
+  "thinkingRequestFields",
   "systemPrompt"
 ];
 
@@ -192,6 +198,8 @@ function readFormSettings() {
       .filter(
         (key) =>
           key !== "showOcrResult" &&
+          key !== "showInputImage" &&
+          key !== "compressInputImage" &&
           key !== "enableThinking" &&
           key !== "currentPresetId" &&
           key !== "modelPresets"
@@ -199,6 +207,10 @@ function readFormSettings() {
       .map((key) => [key, String(data.get(key) || "").trim()])
   );
   settings.showOcrResult = form.elements.showOcrResult.checked;
+  settings.showInputImage = form.elements.showInputImage.checked;
+  settings.compressInputImage = form.elements.compressInputImage.checked;
+  settings.imageMaxEdge = clampInteger(form.elements.imageMaxEdge.value, 320, 4096, 1600);
+  settings.imageJpegQuality = clampNumber(form.elements.imageJpegQuality.value, 0.5, 1, 0.88);
   settings.enableThinking = form.elements.enableThinking.checked;
   settings.currentPresetId = currentPresetId;
   settings.modelPresets = modelPresets;
@@ -237,4 +249,16 @@ function createPresetId() {
 
 function isPresetControl(target) {
   return target?.id === "preset-select" || target?.id === "preset-name";
+}
+
+function clampInteger(value, min, max, fallback) {
+  const number = Number.parseInt(value, 10);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.min(max, Math.max(min, number));
+}
+
+function clampNumber(value, min, max, fallback) {
+  const number = Number.parseFloat(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.min(max, Math.max(min, number));
 }

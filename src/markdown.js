@@ -41,7 +41,7 @@
         continue;
       }
 
-      const heading = /^(#{1,3})\s+(.+)$/.exec(line);
+      const heading = /^(#{1,6})\s+(.+)$/.exec(line);
       if (heading) {
         const level = heading[1].length;
         blocks.push(`<h${level}>${renderInline(heading[2])}</h${level}>`);
@@ -76,7 +76,7 @@
         lines[index].trim() &&
         !lines[index].startsWith("```") &&
         !isMathBlockStart(lines[index]) &&
-        !/^(#{1,3})\s+/.test(lines[index]) &&
+        !/^(#{1,6})\s+/.test(lines[index]) &&
         !/^\s*[-*]\s+/.test(lines[index]) &&
         !/^\s*\d+\.\s+/.test(lines[index])
       ) {

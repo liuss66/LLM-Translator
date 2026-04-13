@@ -1,5 +1,9 @@
 const status = document.querySelector("#status");
 const showOcrResult = document.querySelector("#show-ocr-result");
+const showInputImage = document.querySelector("#show-input-image");
+const compressInputImage = document.querySelector("#compress-input-image");
+const imageMaxEdge = document.querySelector("#image-max-edge");
+const imageJpegQuality = document.querySelector("#image-jpeg-quality");
 const enableThinking = document.querySelector("#enable-thinking");
 const modelPreset = document.querySelector("#model-preset");
 
@@ -8,6 +12,18 @@ loadSettings();
 chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName === "sync" && changes.showOcrResult) {
     showOcrResult.checked = Boolean(changes.showOcrResult.newValue);
+  }
+  if (areaName === "sync" && changes.showInputImage) {
+    showInputImage.checked = Boolean(changes.showInputImage.newValue);
+  }
+  if (areaName === "sync" && changes.compressInputImage) {
+    compressInputImage.checked = Boolean(changes.compressInputImage.newValue);
+  }
+  if (areaName === "sync" && changes.imageMaxEdge) {
+    imageMaxEdge.value = changes.imageMaxEdge.newValue;
+  }
+  if (areaName === "sync" && changes.imageJpegQuality) {
+    imageJpegQuality.value = changes.imageJpegQuality.newValue;
   }
   if (areaName === "sync" && changes.enableThinking) {
     enableThinking.checked = Boolean(changes.enableThinking.newValue);
@@ -27,10 +43,38 @@ showOcrResult.addEventListener("change", async () => {
   });
 });
 
+showInputImage.addEventListener("change", async () => {
+  await chrome.runtime.sendMessage({
+    type: "update-settings",
+    settings: { showInputImage: showInputImage.checked }
+  });
+});
+
 enableThinking.addEventListener("change", async () => {
   await chrome.runtime.sendMessage({
     type: "update-settings",
     settings: { enableThinking: enableThinking.checked }
+  });
+});
+
+compressInputImage.addEventListener("change", async () => {
+  await chrome.runtime.sendMessage({
+    type: "update-settings",
+    settings: { compressInputImage: compressInputImage.checked }
+  });
+});
+
+imageMaxEdge.addEventListener("change", async () => {
+  await chrome.runtime.sendMessage({
+    type: "update-settings",
+    settings: { imageMaxEdge: clampInteger(imageMaxEdge.value, 320, 4096, 1600) }
+  });
+});
+
+imageJpegQuality.addEventListener("change", async () => {
+  await chrome.runtime.sendMessage({
+    type: "update-settings",
+    settings: { imageJpegQuality: clampNumber(imageJpegQuality.value, 0.5, 1, 0.88) }
   });
 });
 
@@ -45,7 +89,7 @@ modelPreset.addEventListener("change", async () => {
       presetId
     });
     if (!response?.ok) throw new Error(response?.error || "Model preset is unavailable.");
-    status.textContent = "Model switched.";
+    status.textContent = "切换成功";
   } catch (error) {
     status.textContent = error.message || "Model preset is unavailable.";
     await loadSettings();
@@ -57,14 +101,11 @@ modelPreset.addEventListener("change", async () => {
 document.querySelector("#translate-selection").addEventListener("click", async () => {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    const [{ result } = {}] = await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      func: () => globalThis.getSelection?.().toString() || ""
-    });
+    const text = await readSelectedTextWithClipboardFallback(tab.id);
     const response = await chrome.runtime.sendMessage({
       type: "translate-selection",
       tabId: tab.id,
-      text: result || ""
+      text
     });
     if (!response?.ok) throw new Error(response?.error || "Failed to translate selection.");
     window.close();
@@ -105,6 +146,10 @@ async function loadSettings() {
   const response = await chrome.runtime.sendMessage({ type: "get-settings" });
   const settings = response?.settings || {};
   showOcrResult.checked = Boolean(settings.showOcrResult);
+  showInputImage.checked = Boolean(settings.showInputImage);
+  compressInputImage.checked = settings.compressInputImage !== false;
+  imageMaxEdge.value = settings.imageMaxEdge || 1600;
+  imageJpegQuality.value = settings.imageJpegQuality || 0.88;
   enableThinking.checked = Boolean(settings.enableThinking);
   renderPresetOptions(settings.modelPresets || [], settings.currentPresetId || "");
 }
@@ -119,4 +164,86 @@ function renderPresetOptions(presets, currentPresetId) {
     modelPreset.append(option);
   });
   modelPreset.value = currentValue;
+}
+
+async function readSelectedTextWithClipboardFallback(tabId) {
+  const selectedText = await readSelectedTextFromTab(tabId).catch(() => "");
+  if (selectedText) return selectedText;
+
+  const [{ result: copied } = {}] = await chrome.scripting
+    .executeScript({
+      target: { tabId },
+      func: () => document.execCommand?.("copy") || false
+    })
+    .catch(() => [{ result: false }]);
+  if (!copied) return "";
+
+  try {
+    return (await navigator.clipboard.readText()).trim();
+  } catch {
+    return "";
+  }
+}
+
+async function readSelectedTextFromTab(tabId) {
+  const [{ result } = {}] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: collectSelectedText
+  });
+  return result || "";
+}
+
+function collectSelectedText() {
+  const seen = new Set();
+  const parts = [];
+  const add = (value) => {
+    const text = String(value || "").trim();
+    if (text && !seen.has(text)) {
+      seen.add(text);
+      parts.push(text);
+    }
+  };
+  const readRoot = (root) => {
+    try {
+      add(root.getSelection?.().toString());
+    } catch {}
+    try {
+      const active = root.activeElement;
+      if (
+        active &&
+        typeof active.value === "string" &&
+        Number.isInteger(active.selectionStart) &&
+        Number.isInteger(active.selectionEnd) &&
+        active.selectionEnd > active.selectionStart
+      ) {
+        add(active.value.slice(active.selectionStart, active.selectionEnd));
+      }
+    } catch {}
+    let elements = [];
+    try {
+      elements = Array.from(root.querySelectorAll?.("*") || []);
+    } catch {}
+    for (const element of elements) {
+      if (element.shadowRoot) readRoot(element.shadowRoot);
+      if (element.tagName === "IFRAME") {
+        try {
+          if (element.contentDocument) readRoot(element.contentDocument);
+        } catch {}
+      }
+    }
+  };
+  readRoot(document);
+  return parts.join("\n\n");
+}
+
+function clampInteger(value, min, max, fallback) {
+  const number = Number.parseInt(value, 10);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.min(max, Math.max(min, number));
+}
+
+function clampNumber(value, min, max, fallback) {
+  const number = Number.parseFloat(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.min(max, Math.max(min, number));
 }

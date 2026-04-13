@@ -73,8 +73,37 @@
         </label>
 
         <label class="checkbox-row">
+          <input name="showInputImage" type="checkbox">
+          Show input image for screenshot translation
+        </label>
+
+        <label class="checkbox-row">
+          <input name="compressInputImage" type="checkbox">
+          Compress screenshot before sending to model
+        </label>
+
+        <label>
+          Image max edge
+          <input name="imageMaxEdge" type="number" min="320" max="4096" step="64" placeholder="1600">
+        </label>
+
+        <label>
+          Image JPEG quality
+          <input name="imageJpegQuality" type="number" min="0.5" max="1" step="0.01" placeholder="0.88">
+        </label>
+
+        <label class="checkbox-row">
           <input name="enableThinking" type="checkbox">
           Enable model thinking
+        </label>
+
+        <label>
+          Thinking request fields
+          <textarea
+            name="thinkingRequestFields"
+            rows="3"
+            placeholder="enable_thinking&#10;chat_template_kwargs.enable_thinking"
+          ></textarea>
         </label>
 
         <label>

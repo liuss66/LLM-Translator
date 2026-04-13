@@ -9,8 +9,10 @@
   <body>
     <main>
       <h1>LLM Translator</h1>
-      <button id="translate-selection" type="button" title="Shortcut: Alt+T">Text</button>
-      <button id="translate-region" type="button" title="Shortcut: Alt+S">Screenshot</button>
+      <div class="primary-actions">
+        <button id="translate-selection" type="button" title="Shortcut: Alt+T">Text</button>
+        <button id="translate-region" type="button" title="Shortcut: Alt+S">Screenshot</button>
+      </div>
       <label class="preset-row">
         <span>Model</span>
         <select id="model-preset">
@@ -24,9 +26,29 @@
           <span>OCR text</span>
         </label>
         <label class="toggle-row">
+          <input id="show-input-image" type="checkbox">
+          <span class="toggle-ui" aria-hidden="true"></span>
+          <span>Input image</span>
+        </label>
+        <label class="toggle-row">
           <input id="enable-thinking" type="checkbox">
           <span class="toggle-ui" aria-hidden="true"></span>
           <span>Thinking</span>
+        </label>
+      </div>
+      <div class="image-settings" aria-label="Image compression settings">
+        <label class="toggle-row">
+          <input id="compress-input-image" type="checkbox">
+          <span class="toggle-ui" aria-hidden="true"></span>
+          <span>Compress</span>
+        </label>
+        <label>
+          Max edge
+          <input id="image-max-edge" type="number" min="320" max="4096" step="64">
+        </label>
+        <label>
+          JPEG quality
+          <input id="image-jpeg-quality" type="number" min="0.5" max="1" step="0.01">
         </label>
       </div>
       <button id="open-side-panel" type="button" title="Shortcut: Alt+Shift+Y">Side panel</button>

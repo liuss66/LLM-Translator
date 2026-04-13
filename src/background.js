@@ -6,7 +6,12 @@ const DEFAULT_SETTINGS = {
   visionModel: "gpt-4o-mini",
   targetLanguage: "中文",
   showOcrResult: false,
+  showInputImage: false,
+  compressInputImage: true,
+  imageMaxEdge: 1600,
+  imageJpegQuality: 0.88,
   enableThinking: false,
+  thinkingRequestFields: "enable_thinking\nchat_template_kwargs.enable_thinking",
   currentPresetId: "",
   modelPresets: [],
   systemPrompt:
@@ -20,6 +25,7 @@ const MODEL_SETTING_KEYS = [
   "visionModel",
   "targetLanguage",
   "enableThinking",
+  "thinkingRequestFields",
   "systemPrompt"
 ];
 
@@ -76,11 +82,7 @@ chrome.commands.onCommand.addListener(async (command) => {
 
   if (command === MENU_TRANSLATE_SELECTION) {
     runForTab(tab.id, async () => {
-      const [{ result } = {}] = await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        func: () => globalThis.getSelection?.().toString() || ""
-      });
-      await translateSelection(tab.id, result || "");
+      await translateSelection(tab.id, await readSelectedTextFromTab(tab.id));
     });
     return;
   }
@@ -163,11 +165,7 @@ async function handleMessage(message, sender) {
   if (message?.type === "translate-active-selection") {
     const tabId = await getActiveTabId();
     await runForTab(tabId, async () => {
-      const [{ result } = {}] = await chrome.scripting.executeScript({
-        target: { tabId },
-        func: () => globalThis.getSelection?.().toString() || ""
-      });
-      await translateSelection(tabId, result || "");
+      await translateSelection(tabId, message.text || (await readSelectedTextFromTab(tabId)));
     });
     return { ok: true };
   }
@@ -215,8 +213,20 @@ async function handleMessage(message, sender) {
   }
 
   if (message?.type === "ask-last-screenshot") {
-    const answer = await askLastScreenshot(message.question || "", message.history || []);
-    return { ok: true, answer };
+    const startedAt = Date.now();
+    const answer = await askLastScreenshot(message.question || "", message.history || [], async (partial) => {
+      if (!message.requestId) return;
+      chrome.runtime
+        .sendMessage({
+          type: "chat-stream-updated",
+          requestId: message.requestId,
+          answer: partial,
+          startedAt,
+          isStreaming: true
+        })
+        .catch(() => {});
+    });
+    return { ok: true, answer, elapsedMs: Date.now() - startedAt };
   }
 
   if (message?.type === "region-selected") {
@@ -268,6 +278,67 @@ async function openSidePanel(tab) {
   }
 }
 
+async function readSelectedTextFromTab(tabId) {
+  const [{ result } = {}] = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: collectSelectedText
+  });
+  return result || "";
+}
+
+function collectSelectedText() {
+  const seen = new Set();
+  const parts = [];
+
+  const add = (value) => {
+    const text = String(value || "").trim();
+    if (text && !seen.has(text)) {
+      seen.add(text);
+      parts.push(text);
+    }
+  };
+
+  const readRoot = (root) => {
+    try {
+      add(root.getSelection?.().toString());
+    } catch {}
+
+    try {
+      const active = root.activeElement;
+      if (
+        active &&
+        typeof active.value === "string" &&
+        Number.isInteger(active.selectionStart) &&
+        Number.isInteger(active.selectionEnd) &&
+        active.selectionEnd > active.selectionStart
+      ) {
+        add(active.value.slice(active.selectionStart, active.selectionEnd));
+      }
+    } catch {}
+
+    let elements = [];
+    try {
+      elements = Array.from(root.querySelectorAll?.("*") || []);
+    } catch {}
+
+    for (const element of elements) {
+      if (element.shadowRoot) {
+        readRoot(element.shadowRoot);
+      }
+      if (element.tagName === "IFRAME") {
+        try {
+          if (element.contentDocument) {
+            readRoot(element.contentDocument);
+          }
+        } catch {}
+      }
+    }
+  };
+
+  readRoot(document);
+  return parts.join("\n\n");
+}
+
 async function translateSelection(tabId, rawText) {
   const text = rawText.trim();
   if (!text) {
@@ -279,18 +350,31 @@ async function translateSelection(tabId, rawText) {
     return;
   }
 
+  const startedAt = Date.now();
   await showResult(tabId, {
     title: "Translating...",
     source: text,
-    translation: "Waiting for model response."
+    translation: "Waiting for model response.",
+    startedAt,
+    isStreaming: true
   });
 
   const settings = await getSettings();
-  const translation = removeReasoningBlocks(await translateText(settings, text), settings);
+  const translation = await translateText(settings, text, async (partial) => {
+    await showResult(tabId, {
+      title: `Translating to ${settings.targetLanguage}...`,
+      source: text,
+      translation: removeReasoningBlocks(partial, settings),
+      startedAt,
+      isStreaming: true
+    });
+  });
   await showResult(tabId, {
     title: `Translated to ${settings.targetLanguage}`,
     source: text,
-    translation
+    translation: removeReasoningBlocks(translation, settings),
+    startedAt,
+    elapsedMs: Date.now() - startedAt
   });
 }
 
@@ -301,22 +385,51 @@ async function startRegionSelection(tabId) {
 
 async function translateScreenshotRegion(tabId, windowId, rect) {
   validateRect(rect);
+  const startedAt = Date.now();
   await showResult(tabId, {
     title: "Recognizing...",
     source: "",
-    translation: "Capturing the selected area and asking the model to read it."
+    translation: "Capturing the selected area and asking the model to read it.",
+    startedAt,
+    isStreaming: true
   });
 
   const dataUrl = await chrome.tabs.captureVisibleTab(windowId, { format: "png" });
   const croppedDataUrl = await cropDataUrl(dataUrl, rect);
   const settings = await getSettings();
-  const translation = removeReasoningBlocks(await translateImage(settings, croppedDataUrl), settings);
+  const preparedImage = await prepareImageForModel(croppedDataUrl, settings);
+  await showResult(tabId, {
+    title: "Recognizing...",
+    source: "Selected screen region",
+    translation: "Waiting for model response.",
+    imageUrl: preparedImage.dataUrl,
+    showInputImage: settings.showInputImage,
+    imageInfo: preparedImage.info,
+    startedAt,
+    isStreaming: true
+  });
+  const translation = await translateImage(settings, preparedImage.dataUrl, async (partial) => {
+    await showResult(tabId, {
+      title: `OCR translating to ${settings.targetLanguage}...`,
+      source: "Selected screen region",
+      translation: removeReasoningBlocks(partial, settings),
+      imageUrl: preparedImage.dataUrl,
+      showInputImage: settings.showInputImage,
+      imageInfo: preparedImage.info,
+      startedAt,
+      isStreaming: true
+    });
+  });
 
   await showResult(tabId, {
     title: `OCR translated to ${settings.targetLanguage}`,
     source: "Selected screen region",
-    translation,
-    imageUrl: croppedDataUrl
+    translation: removeReasoningBlocks(translation, settings),
+    imageUrl: preparedImage.dataUrl,
+    showInputImage: settings.showInputImage,
+    imageInfo: preparedImage.info,
+    startedAt,
+    elapsedMs: Date.now() - startedAt
   });
 }
 
@@ -349,8 +462,7 @@ async function showResult(tabId, payload) {
   };
   await chrome.storage.session.set({ lastResult });
   chrome.runtime.sendMessage({ type: "last-result-updated", result: lastResult }).catch(() => {});
-  const { sidePanelOpen } = await chrome.storage.session.get("sidePanelOpen");
-  if (sidePanelPorts.size > 0 || sidePanelOpen) {
+  if (sidePanelPorts.size > 0) {
     await hideFloatingPanel(tabId);
     return;
   }
@@ -378,6 +490,17 @@ async function readSettings() {
   };
 
   settings.apiBaseUrl = settings.apiBaseUrl.replace(/\/+$/, "");
+  settings.compressInputImage = Boolean(settings.compressInputImage);
+  settings.imageMaxEdge = clampInteger(settings.imageMaxEdge, 320, 4096, DEFAULT_SETTINGS.imageMaxEdge);
+  settings.imageJpegQuality = clampNumber(
+    settings.imageJpegQuality,
+    0.5,
+    1,
+    DEFAULT_SETTINGS.imageJpegQuality
+  );
+  settings.thinkingRequestFields = String(
+    settings.thinkingRequestFields || DEFAULT_SETTINGS.thinkingRequestFields
+  ).trim();
   return settings;
 }
 
@@ -415,7 +538,7 @@ async function hideFloatingPanel(tabId) {
   }
 }
 
-async function translateText(settings, text) {
+async function translateText(settings, text, onUpdate) {
   const messages = [
     { role: "system", content: settings.systemPrompt },
     {
@@ -424,10 +547,10 @@ async function translateText(settings, text) {
     }
   ];
 
-  return callModel(settings, settings.textModel, messages);
+  return callModel(settings, settings.textModel, messages, { stream: Boolean(onUpdate), onDelta: onUpdate });
 }
 
-async function translateImage(settings, imageDataUrl) {
+async function translateImage(settings, imageDataUrl, onUpdate) {
   const outputInstruction = settings.showOcrResult
     ? "Return Markdown with two sections: OCR Text and Translation."
     : "Return only the translated text in Markdown. Do not include an OCR Text section or the source text.";
@@ -435,14 +558,14 @@ async function translateImage(settings, imageDataUrl) {
     {
       role: "system",
       content:
-        "You are an OCR and translation assistant. Read all visible text in the image, then translate it accurately. Preserve line breaks, tables, code, and mathematical formulas when useful. Keep formulas in LaTeX delimiters such as $...$ or $$...$$."
+        "You are an OCR and translation assistant. Read all visible text in the image, then translate it accurately into the requested target language. Do not merely repeat the source text. Preserve line breaks, tables, code, and mathematical formulas when useful. Keep formulas in LaTeX delimiters such as $...$ or $$...$$."
     },
     {
       role: "user",
       content: [
         {
           type: "text",
-          text: `Recognize the text in this image and translate it to ${settings.targetLanguage}. ${outputInstruction}`
+          text: `Recognize the text in this image and translate it to ${settings.targetLanguage}. The final answer must be in ${settings.targetLanguage}, except for code, formulas, proper nouns, and unavoidable technical identifiers. ${outputInstruction}`
         },
         {
           type: "image_url",
@@ -454,10 +577,10 @@ async function translateImage(settings, imageDataUrl) {
     }
   ];
 
-  return removeReasoningBlocks(await callModel(settings, settings.visionModel, messages), settings);
+  return callModel(settings, settings.visionModel, messages, { stream: Boolean(onUpdate), onDelta: onUpdate });
 }
 
-async function askLastScreenshot(question, history) {
+async function askLastScreenshot(question, history, onUpdate) {
   const trimmedQuestion = question.trim();
   if (!trimmedQuestion) {
     throw new Error("Question is empty.");
@@ -499,7 +622,13 @@ async function askLastScreenshot(question, history) {
     }
   ];
 
-  return removeReasoningBlocks(await callModel(settings, settings.visionModel, messages), settings);
+  const answer = await callModel(settings, settings.visionModel, messages, {
+    stream: Boolean(onUpdate),
+    onDelta: async (partial) => {
+      await onUpdate?.(removeReasoningBlocks(partial, settings));
+    }
+  });
+  return removeReasoningBlocks(answer, settings);
 }
 
 async function testModel(rawSettings) {
@@ -520,15 +649,15 @@ async function testModel(rawSettings) {
   return reply;
 }
 
-async function callModel(settings, model, messages) {
+async function callModel(settings, model, messages, options = {}) {
   if (settings.provider === "anthropic") {
-    return callAnthropicMessages(settings, model, messages);
+    return callAnthropicMessages(settings, model, messages, options);
   }
 
-  return callOpenAIChatCompletions(settings, model, messages);
+  return callOpenAIChatCompletions(settings, model, messages, options);
 }
 
-async function callOpenAIChatCompletions(settings, model, messages) {
+async function callOpenAIChatCompletions(settings, model, messages, options = {}) {
   const headers = {
     "Content-Type": "application/json"
   };
@@ -541,7 +670,10 @@ async function callOpenAIChatCompletions(settings, model, messages) {
     messages: withThinkingInstruction(settings, messages),
     temperature: 0.2
   };
-  applyThinkingSettings(settings, body);
+  if (options.stream) {
+    body.stream = true;
+  }
+  const appliedThinkingFields = applyThinkingSettings(settings, body);
 
   const response = await fetch(`${settings.apiBaseUrl}/chat/completions`, {
     method: "POST",
@@ -551,7 +683,19 @@ async function callOpenAIChatCompletions(settings, model, messages) {
 
   if (!response.ok) {
     const detail = await response.text();
+    if (appliedThinkingFields && shouldRetryWithoutThinkingFields(response.status, detail)) {
+      return callOpenAIChatCompletions(
+        { ...settings, thinkingRequestFields: "" },
+        model,
+        messages,
+        options
+      );
+    }
     throw new Error(`Model request failed (${response.status}): ${detail}`);
+  }
+
+  if (options.stream) {
+    return readOpenAIStream(response, options.onDelta);
   }
 
   const data = await response.json();
@@ -565,7 +709,7 @@ async function callOpenAIChatCompletions(settings, model, messages) {
     : String(content).trim();
 }
 
-async function callAnthropicMessages(settings, model, messages) {
+async function callAnthropicMessages(settings, model, messages, options = {}) {
   const { system, anthropicMessages } = toAnthropicMessages(withThinkingInstruction(settings, messages));
   const response = await fetch(`${settings.apiBaseUrl}/messages`, {
     method: "POST",
@@ -579,6 +723,7 @@ async function callAnthropicMessages(settings, model, messages) {
       model,
       max_tokens: 2048,
       temperature: 0.2,
+      stream: Boolean(options.stream),
       system,
       messages: anthropicMessages
     })
@@ -587,6 +732,10 @@ async function callAnthropicMessages(settings, model, messages) {
   if (!response.ok) {
     const detail = await response.text();
     throw new Error(`Anthropic request failed (${response.status}): ${detail}`);
+  }
+
+  if (options.stream) {
+    return readAnthropicStream(response, options.onDelta);
   }
 
   const data = await response.json();
@@ -600,6 +749,77 @@ async function callAnthropicMessages(settings, model, messages) {
     .map((part) => part.text || "")
     .join("")
     .trim();
+}
+
+async function readOpenAIStream(response, onDelta) {
+  let text = "";
+  await readServerSentEvents(response, async (eventData) => {
+    if (eventData === "[DONE]") return;
+    const data = JSON.parse(eventData);
+    const content = data?.choices?.[0]?.delta?.content;
+    const delta = Array.isArray(content)
+      ? content.map((part) => part.text || "").join("")
+      : content || "";
+    if (!delta) return;
+    text += delta;
+    await onDelta?.(text);
+  });
+  if (!text.trim()) {
+    throw new Error("Model response did not contain translated content.");
+  }
+  return text.trim();
+}
+
+async function readAnthropicStream(response, onDelta) {
+  let text = "";
+  await readServerSentEvents(response, async (eventData) => {
+    const data = JSON.parse(eventData);
+    if (data?.type !== "content_block_delta" || data?.delta?.type !== "text_delta") return;
+    const delta = data.delta.text || "";
+    if (!delta) return;
+    text += delta;
+    await onDelta?.(text);
+  });
+  if (!text.trim()) {
+    throw new Error("Anthropic response did not contain translated content.");
+  }
+  return text.trim();
+}
+
+async function readServerSentEvents(response, onEventData) {
+  const reader = response.body?.getReader();
+  if (!reader) {
+    throw new Error("Streaming response is not readable in this browser.");
+  }
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const parts = buffer.split(/\r?\n\r?\n/);
+    buffer = parts.pop() || "";
+    for (const part of parts) {
+      const data = part
+        .split(/\r?\n/)
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => line.slice(5).trimStart())
+        .join("\n");
+      if (!data) continue;
+      await onEventData(data);
+    }
+  }
+
+  buffer += decoder.decode();
+  const data = buffer
+    .split(/\r?\n/)
+    .filter((line) => line.startsWith("data:"))
+    .map((line) => line.slice(5).trimStart())
+    .join("\n");
+  if (data) {
+    await onEventData(data);
+  }
 }
 
 function withThinkingInstruction(settings, messages) {
@@ -619,11 +839,51 @@ function withThinkingInstruction(settings, messages) {
 }
 
 function applyThinkingSettings(settings, body) {
-  if (settings.provider === "llamacpp") {
-    body.chat_template_kwargs = {
-      enable_thinking: Boolean(settings.enableThinking)
-    };
+  const enableThinking = Boolean(settings.enableThinking);
+  if (settings.provider === "anthropic" || !shouldSendThinkingCustomFields(settings)) {
+    return false;
   }
+
+  const fieldPaths = parseThinkingRequestFields(settings.thinkingRequestFields);
+  for (const fieldPath of fieldPaths) {
+    setNestedRequestField(body, fieldPath, enableThinking);
+  }
+  return fieldPaths.length > 0;
+}
+
+function shouldSendThinkingCustomFields(settings) {
+  if (settings.provider === "llamacpp") return true;
+  try {
+    return new URL(settings.apiBaseUrl).hostname.toLowerCase() !== "api.openai.com";
+  } catch {
+    return true;
+  }
+}
+
+function parseThinkingRequestFields(rawFields) {
+  return String(rawFields ?? DEFAULT_SETTINGS.thinkingRequestFields)
+    .split(/[\n,]+/)
+    .map((field) => field.trim())
+    .filter(Boolean);
+}
+
+function shouldRetryWithoutThinkingFields(status, detail) {
+  if (![400, 422].includes(status)) return false;
+  return /unknown|unrecognized|unsupported|extra|invalid|not permitted|unexpected/i.test(detail || "");
+}
+
+function setNestedRequestField(target, fieldPath, value) {
+  const keys = fieldPath.split(".").map((key) => key.trim()).filter(Boolean);
+  if (keys.length === 0) return;
+
+  let cursor = target;
+  for (const key of keys.slice(0, -1)) {
+    if (!cursor[key] || typeof cursor[key] !== "object" || Array.isArray(cursor[key])) {
+      cursor[key] = {};
+    }
+    cursor = cursor[key];
+  }
+  cursor[keys[keys.length - 1]] = value;
 }
 
 function removeReasoningBlocks(content, settings) {
@@ -709,6 +969,53 @@ async function cropDataUrl(dataUrl, rect) {
   return blobToDataUrl(blob);
 }
 
+async function prepareImageForModel(dataUrl, settings) {
+  const image = await createImageBitmap(await (await fetch(dataUrl)).blob());
+  const originalWidth = image.width;
+  const originalHeight = image.height;
+  const shouldCompress = Boolean(settings.compressInputImage);
+  const maxEdge = clampInteger(settings.imageMaxEdge, 320, 4096, DEFAULT_SETTINGS.imageMaxEdge);
+  const quality = clampNumber(settings.imageJpegQuality, 0.5, 1, DEFAULT_SETTINGS.imageJpegQuality);
+  const scale = shouldCompress ? Math.min(1, maxEdge / Math.max(originalWidth, originalHeight)) : 1;
+  const outputWidth = Math.max(1, Math.round(originalWidth * scale));
+  const outputHeight = Math.max(1, Math.round(originalHeight * scale));
+
+  if (!shouldCompress) {
+    return {
+      dataUrl,
+      info: {
+        compressed: false,
+        originalWidth,
+        originalHeight,
+        width: originalWidth,
+        height: originalHeight,
+        format: "image/png"
+      }
+    };
+  }
+
+  const canvas = new OffscreenCanvas(outputWidth, outputHeight);
+  const context = canvas.getContext("2d");
+  context.drawImage(image, 0, 0, outputWidth, outputHeight);
+  const blob = await canvas.convertToBlob({
+    type: "image/jpeg",
+    quality
+  });
+
+  return {
+    dataUrl: await blobToDataUrl(blob),
+    info: {
+      compressed: true,
+      originalWidth,
+      originalHeight,
+      width: outputWidth,
+      height: outputHeight,
+      format: "image/jpeg",
+      quality
+    }
+  };
+}
+
 async function blobToDataUrl(blob) {
   const bytes = new Uint8Array(await blob.arrayBuffer());
   const chunkSize = 0x8000;
@@ -729,4 +1036,16 @@ function validateRect(rect) {
   ) {
     throw new Error("Selected region is too small.");
   }
+}
+
+function clampInteger(value, min, max, fallback) {
+  const number = Number.parseInt(value, 10);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.min(max, Math.max(min, number));
+}
+
+function clampNumber(value, min, max, fallback) {
+  const number = Number.parseFloat(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.min(max, Math.max(min, number));
 }

@@ -55,8 +55,11 @@
           </div>
         </div>
         <div class="llmt-panel__image-wrap"></div>
-        <div class="llmt-panel__source"></div>
-        <div class="llmt-panel__translation"></div>
+        <div class="llmt-panel__translation-wrap">
+          <div class="llmt-panel__translation-label">Translation</div>
+          <div class="llmt-panel__translation"></div>
+        </div>
+        <div class="llmt-panel__meta"></div>
       `;
       resultPanel
         .querySelector(".llmt-panel__close")
@@ -68,14 +71,14 @@
       document.documentElement.append(resultPanel);
     }
 
-    resultPanel.querySelector(".llmt-panel__title").textContent = payload.title || "Translation";
-    resultPanel.querySelector(".llmt-panel__source").textContent = payload.source || "";
+    resultPanel.querySelector(".llmt-panel__title").textContent = "LLM Translator";
+    resultPanel.querySelector(".llmt-panel__meta").textContent = formatMeta(payload);
     resultPanel.querySelector(".llmt-panel__translation").innerHTML =
       globalThis.LLMTranslatorMarkdown.renderMarkdown(payload.translation || "");
 
     const imageWrap = resultPanel.querySelector(".llmt-panel__image-wrap");
     imageWrap.innerHTML = "";
-    if (payload.imageUrl) {
+    if (payload.imageUrl && payload.showInputImage) {
       const image = document.createElement("img");
       image.src = payload.imageUrl;
       image.alt = "Selected region";
@@ -83,6 +86,25 @@
     }
 
     resultPanel.hidden = false;
+  }
+
+  function formatMeta(payload) {
+    const parts = [];
+    if (payload.elapsedMs !== undefined) {
+      parts.push(`用时 ${formatDuration(payload.elapsedMs)}`);
+    } else if (payload.startedAt) {
+      parts.push("计时中");
+    }
+    if (payload.isStreaming) {
+      parts.push("流式输出中");
+    }
+    return parts.join(" · ");
+  }
+
+  function formatDuration(milliseconds) {
+    const totalSeconds = Math.max(0, milliseconds / 1000);
+    if (totalSeconds < 10) return `${totalSeconds.toFixed(1)}s`;
+    return `${Math.round(totalSeconds)}s`;
   }
 
   function hideResultPanel() {
