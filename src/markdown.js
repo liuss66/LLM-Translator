@@ -25,7 +25,7 @@
       }
 
       if (line.startsWith("```")) {
-        const language = line.slice(3).trim();
+        const language = normalizeCodeLanguage(line.slice(3).trim());
         const code = [];
         index += 1;
         while (index < lines.length && !lines[index].startsWith("```")) {
@@ -33,11 +33,7 @@
           index += 1;
         }
         index += index < lines.length ? 1 : 0;
-        blocks.push(
-          `<pre><code${language ? ` data-language="${escapeHtml(language)}"` : ""}>${escapeHtml(
-            code.join("\n")
-          )}</code></pre>`
-        );
+        blocks.push(renderCodeBlock(code.join("\n"), language));
         continue;
       }
 
@@ -88,6 +84,135 @@
     }
 
     return blocks.join("");
+  }
+
+  function renderCodeBlock(code, language) {
+    const highlighted = highlightCode(code, language);
+    return `<pre class="llmt-code-block">${
+      language ? `<span class="llmt-code-language">${escapeHtml(language)}</span>` : ""
+    }<code${language ? ` data-language="${escapeHtml(language)}"` : ""}>${highlighted}</code></pre>`;
+  }
+
+  function normalizeCodeLanguage(rawLanguage) {
+    const language = String(rawLanguage || "").trim().split(/\s+/)[0].toLowerCase();
+    const aliases = {
+      javascript: "js",
+      typescript: "ts",
+      shell: "bash",
+      sh: "bash",
+      zsh: "bash",
+      cxx: "cpp",
+      "c++": "cpp",
+      h: "c",
+      hpp: "cpp",
+      html: "markup",
+      xml: "markup",
+      svg: "markup",
+      yml: "yaml"
+    };
+    return aliases[language] || language;
+  }
+
+  function highlightCode(code, language) {
+    const value = String(code || "");
+    if (language === "json") return highlightJson(value);
+    if (language === "markup") return highlightMarkup(value);
+    if (language === "css") return highlightCss(value);
+    if (language === "python" || language === "py") return highlightLanguage(value, PYTHON_KEYWORDS);
+    if (language === "bash") return highlightBash(value);
+    if (language === "c" || language === "cpp" || language === "cc") return highlightCLike(value);
+    if (language === "js" || language === "ts" || language === "jsx" || language === "tsx") {
+      return highlightLanguage(value, JS_KEYWORDS);
+    }
+    return escapeHtml(value);
+  }
+
+  function highlightLanguage(code, keywords) {
+    return highlightByRules(code, [
+      { type: "comment", pattern: /\/\/[^\n]*|\/\*[\s\S]*?\*\/|#[^\n]*/y },
+      { type: "string", pattern: /(["'`])(?:\\[\s\S]|(?!\1)[^\\])*\1/y },
+      { type: "number", pattern: /\b(?:0x[\da-fA-F]+|\d+(?:\.\d+)?)\b/y },
+      { type: "keyword", pattern: new RegExp(`\\b(?:${keywords.join("|")})\\b`, "y") },
+      { type: "function", pattern: /\b[A-Za-z_$][\w$]*(?=\s*\()/y }
+    ]);
+  }
+
+  function highlightJson(code) {
+    return highlightByRules(code, [
+      { type: "key", pattern: /"([^"\\]|\\.)*"(?=\s*:)/y },
+      { type: "string", pattern: /"([^"\\]|\\.)*"/y },
+      { type: "number", pattern: /-?\b\d+(?:\.\d+)?(?:e[+-]?\d+)?\b/iy },
+      { type: "keyword", pattern: /\b(?:true|false|null)\b/y }
+    ]);
+  }
+
+  function highlightCss(code) {
+    return highlightByRules(code, [
+      { type: "comment", pattern: /\/\*[\s\S]*?\*\//y },
+      { type: "string", pattern: /(["'])(?:\\[\s\S]|(?!\1)[^\\])*\1/y },
+      { type: "keyword", pattern: /@[A-Za-z-]+/y },
+      { type: "property", pattern: /[A-Za-z-]+(?=\s*:)/y },
+      { type: "number", pattern: /#[\da-fA-F]{3,8}\b|\b\d+(?:\.\d+)?(?:px|em|rem|%|vh|vw|s|ms)?\b/y },
+      { type: "function", pattern: /\b[A-Za-z-]+(?=\()/y }
+    ]);
+  }
+
+  function highlightMarkup(code) {
+    return highlightByRules(code, [
+      { type: "comment", pattern: /<!--[\s\S]*?-->/y },
+      { type: "keyword", pattern: /<\/?[A-Za-z][\w:-]*/y },
+      { type: "property", pattern: /\s[A-Za-z_:][\w:.-]*(?=\=)/y },
+      { type: "string", pattern: /(["'])(?:\\[\s\S]|(?!\1)[^\\])*\1/y },
+      { type: "keyword", pattern: /\/?>/y }
+    ]);
+  }
+
+  function highlightBash(code) {
+    return highlightByRules(code, [
+      { type: "comment", pattern: /#[^\n]*/y },
+      { type: "string", pattern: /(["'])(?:\\[\s\S]|(?!\1)[^\\])*\1/y },
+      { type: "keyword", pattern: /\b(?:if|then|else|elif|fi|for|while|do|done|case|esac|function|in|export|local|return|set)\b/y },
+      { type: "function", pattern: /\b(?:git|npm|pnpm|yarn|node|python|pip|curl|cd|mkdir|rm|cp|mv|echo|cat|grep|sed|awk)\b/y },
+      { type: "number", pattern: /\B-\w+\b/y }
+    ]);
+  }
+
+  function highlightCLike(code) {
+    return highlightByRules(code, [
+      { type: "comment", pattern: /\/\/[^\n]*|\/\*[\s\S]*?\*\//y },
+      { type: "keyword", pattern: /^\s*#[ \t]*(?:include|define|ifdef|ifndef|endif|if|elif|else|pragma|undef|error|warning)\b/my },
+      { type: "string", pattern: /L?("(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*')/y },
+      { type: "number", pattern: /\b(?:0x[\da-fA-F]+|\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)[uUlLfF]*\b/y },
+      { type: "keyword", pattern: new RegExp(`\\b(?:${C_KEYWORDS.join("|")})\\b`, "y") },
+      { type: "function", pattern: /\b[A-Za-z_]\w*(?=\s*\()/y }
+    ]);
+  }
+
+  function highlightByRules(code, rules) {
+    let html = "";
+    let index = 0;
+    while (index < code.length) {
+      const match = matchHighlightRule(code, index, rules);
+      if (match) {
+        html += `<span class="llmt-token llmt-token--${match.type}">${escapeHtml(match.text)}</span>`;
+        index += match.text.length;
+        continue;
+      }
+      html += escapeHtml(code[index]);
+      index += 1;
+    }
+    return html;
+  }
+
+  function matchHighlightRule(code, index, rules) {
+    for (const rule of rules) {
+      rule.pattern.lastIndex = index;
+      const match = rule.pattern.exec(code);
+      if (match?.index === index && match[0]) {
+        return { type: rule.type, text: match[0] };
+      }
+    }
+    return null;
   }
 
   function isHorizontalRule(line) {
@@ -691,6 +816,171 @@
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#39;");
   }
+
+  const JS_KEYWORDS = [
+    "await",
+    "async",
+    "break",
+    "case",
+    "catch",
+    "class",
+    "const",
+    "continue",
+    "default",
+    "delete",
+    "do",
+    "else",
+    "export",
+    "extends",
+    "false",
+    "finally",
+    "for",
+    "from",
+    "function",
+    "if",
+    "import",
+    "in",
+    "instanceof",
+    "let",
+    "new",
+    "null",
+    "of",
+    "return",
+    "static",
+    "super",
+    "switch",
+    "this",
+    "throw",
+    "true",
+    "try",
+    "typeof",
+    "undefined",
+    "var",
+    "void",
+    "while",
+    "yield"
+  ];
+
+  const PYTHON_KEYWORDS = [
+    "and",
+    "as",
+    "assert",
+    "async",
+    "await",
+    "break",
+    "class",
+    "continue",
+    "def",
+    "del",
+    "elif",
+    "else",
+    "except",
+    "False",
+    "finally",
+    "for",
+    "from",
+    "global",
+    "if",
+    "import",
+    "in",
+    "is",
+    "lambda",
+    "None",
+    "nonlocal",
+    "not",
+    "or",
+    "pass",
+    "raise",
+    "return",
+    "True",
+    "try",
+    "while",
+    "with",
+    "yield"
+  ];
+
+  const C_KEYWORDS = [
+    "_Alignas",
+    "_Alignof",
+    "_Atomic",
+    "_Bool",
+    "_Complex",
+    "_Generic",
+    "_Imaginary",
+    "_Noreturn",
+    "_Static_assert",
+    "_Thread_local",
+    "alignas",
+    "alignof",
+    "asm",
+    "auto",
+    "bool",
+    "break",
+    "case",
+    "catch",
+    "char",
+    "class",
+    "const",
+    "constexpr",
+    "const_cast",
+    "continue",
+    "decltype",
+    "default",
+    "delete",
+    "do",
+    "double",
+    "dynamic_cast",
+    "else",
+    "enum",
+    "explicit",
+    "export",
+    "extern",
+    "false",
+    "float",
+    "for",
+    "friend",
+    "goto",
+    "if",
+    "inline",
+    "int",
+    "long",
+    "mutable",
+    "namespace",
+    "new",
+    "noexcept",
+    "nullptr",
+    "operator",
+    "private",
+    "protected",
+    "public",
+    "register",
+    "reinterpret_cast",
+    "restrict",
+    "return",
+    "short",
+    "signed",
+    "sizeof",
+    "static",
+    "static_assert",
+    "static_cast",
+    "struct",
+    "switch",
+    "template",
+    "this",
+    "thread_local",
+    "throw",
+    "true",
+    "try",
+    "typedef",
+    "typename",
+    "union",
+    "unsigned",
+    "using",
+    "virtual",
+    "void",
+    "volatile",
+    "while"
+  ];
 
   globalThis.LLMTranslatorMarkdown = { renderMarkdown, escapeHtml };
 })();
