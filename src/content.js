@@ -79,7 +79,8 @@
       document.documentElement.append(resultPanel);
     }
 
-    resultPanel.querySelector(".llmt-panel__title").textContent = "LLM Translator";
+    resultPanel.querySelector(".llmt-panel__title").innerHTML =
+      'LLM Translator <span class="brand-mark">@Liuss</span>';
     resultPanel.querySelector(".llmt-panel__meta").textContent = formatMeta(payload);
     resultPanel.querySelector(".llmt-panel__translation").innerHTML =
       globalThis.LLMTranslatorMarkdown.renderMarkdown(payload.translation || "");

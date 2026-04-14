@@ -20,6 +20,13 @@ h1 {
   line-height: 1.2;
 }
 
+.brand-mark {
+  color: #57606a;
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 h2 {
   margin: 0;
   font-size: 18px;

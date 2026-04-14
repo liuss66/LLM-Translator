@@ -22,6 +22,13 @@ h1 {
   line-height: 1.2;
 }
 
+.brand-mark {
+  color: #57606a;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 button {
   width: 100%;
   border: 1px solid #2da44e;

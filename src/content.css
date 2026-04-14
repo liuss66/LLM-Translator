@@ -56,6 +56,12 @@
   overflow-wrap: anywhere;
 }
 
+.llmt-panel__title .brand-mark {
+  color: #57606a;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
 .llmt-panel__side {
   height: 28px;
   border: 1px solid #d0d7de;
@@ -127,6 +133,7 @@
 .llmt-panel__translation ul,
 .llmt-panel__translation ol,
 .llmt-panel__translation pre,
+.llmt-panel__translation .llmt-table-wrap,
 .llmt-panel__translation h1,
 .llmt-panel__translation h2,
 .llmt-panel__translation h3,
@@ -155,6 +162,33 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   word-break: break-word;
+}
+
+.llmt-panel__translation .llmt-table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.llmt-panel__translation table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  font: inherit;
+}
+
+.llmt-panel__translation th,
+.llmt-panel__translation td {
+  border: 1px solid #d0d7de;
+  padding: 6px 8px;
+  vertical-align: top;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.llmt-panel__translation th {
+  background: #f6f8fa;
+  font-weight: 700;
 }
 
 .llmt-panel__translation .llmt-math {

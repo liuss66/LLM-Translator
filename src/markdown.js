@@ -49,6 +49,13 @@
         continue;
       }
 
+      const tableBlock = readTableBlock(lines, index);
+      if (tableBlock) {
+        blocks.push(renderTable(tableBlock));
+        index = tableBlock.nextIndex;
+        continue;
+      }
+
       if (/^\s*[-*]\s+/.test(line)) {
         const items = [];
         while (index < lines.length && /^\s*[-*]\s+/.test(lines[index])) {
@@ -77,6 +84,7 @@
         !lines[index].startsWith("```") &&
         !isMathBlockStart(lines[index]) &&
         !/^(#{1,6})\s+/.test(lines[index]) &&
+        !readTableBlock(lines, index) &&
         !/^\s*[-*]\s+/.test(lines[index]) &&
         !/^\s*\d+\.\s+/.test(lines[index])
       ) {
@@ -87,6 +95,118 @@
     }
 
     return blocks.join("");
+  }
+
+  function readTableBlock(lines, startIndex) {
+    if (startIndex + 1 >= lines.length) return null;
+
+    const header = splitTableRow(lines[startIndex]);
+    const alignments = parseTableSeparator(lines[startIndex + 1]);
+    if (!header || !alignments || header.length < 1) return null;
+
+    const rows = [];
+    let index = startIndex + 2;
+    while (index < lines.length && isTableDataLine(lines[index])) {
+      rows.push(splitTableRow(lines[index]) || []);
+      index += 1;
+    }
+
+    const columnCount = Math.max(header.length, alignments.length, ...rows.map((row) => row.length));
+    return {
+      header: normalizeTableCells(header, columnCount),
+      alignments: normalizeTableCells(alignments, columnCount),
+      rows: rows.map((row) => normalizeTableCells(row, columnCount)),
+      nextIndex: index
+    };
+  }
+
+  function renderTable(tableBlock) {
+    const header = tableBlock.header
+      .map((cell, index) => renderTableCell("th", cell, tableBlock.alignments[index]))
+      .join("");
+    const body = tableBlock.rows
+      .map(
+        (row) =>
+          `<tr>${row
+            .map((cell, index) => renderTableCell("td", cell, tableBlock.alignments[index]))
+            .join("")}</tr>`
+      )
+      .join("");
+
+    return `<div class="llmt-table-wrap"><table><thead><tr>${header}</tr></thead>${
+      body ? `<tbody>${body}</tbody>` : ""
+    }</table></div>`;
+  }
+
+  function renderTableCell(tagName, value, alignment) {
+    const alignStyle = alignment ? ` style="text-align: ${alignment}"` : "";
+    return `<${tagName}${alignStyle}>${renderInline(value)}</${tagName}>`;
+  }
+
+  function parseTableSeparator(line) {
+    const cells = splitTableRow(line);
+    if (!cells || cells.length < 1) return null;
+
+    const alignments = [];
+    for (const cell of cells) {
+      const marker = cell.trim();
+      if (!/^:?-{3,}:?$/.test(marker)) return null;
+      const left = marker.startsWith(":");
+      const right = marker.endsWith(":");
+      alignments.push(left && right ? "center" : right ? "right" : left ? "left" : "");
+    }
+    return alignments;
+  }
+
+  function splitTableRow(line) {
+    let text = String(line || "").trim();
+    if (!text.includes("|")) return null;
+    if (text.startsWith("|")) text = text.slice(1);
+    if (endsWithUnescapedPipe(text)) text = text.slice(0, -1);
+
+    const cells = [];
+    let current = "";
+    for (let index = 0; index < text.length; index += 1) {
+      const char = text[index];
+      if (char === "\\") {
+        const next = text[index + 1];
+        if (next === "|") {
+          current += "|";
+          index += 1;
+        } else {
+          current += char;
+        }
+        continue;
+      }
+      if (char === "|") {
+        cells.push(current.trim());
+        current = "";
+        continue;
+      }
+      current += char;
+    }
+    cells.push(current.trim());
+    return cells;
+  }
+
+  function endsWithUnescapedPipe(value) {
+    if (!value.endsWith("|")) return false;
+    let backslashes = 0;
+    for (let index = value.length - 2; index >= 0 && value[index] === "\\"; index -= 1) {
+      backslashes += 1;
+    }
+    return backslashes % 2 === 0;
+  }
+
+  function isTableDataLine(line) {
+    const trimmed = String(line || "").trim();
+    return Boolean(trimmed && trimmed.includes("|") && !parseTableSeparator(trimmed));
+  }
+
+  function normalizeTableCells(cells, columnCount) {
+    const normalized = cells.slice(0, columnCount);
+    while (normalized.length < columnCount) normalized.push("");
+    return normalized;
   }
 
   function renderInline(value) {
