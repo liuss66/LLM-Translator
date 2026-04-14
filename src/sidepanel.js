@@ -411,9 +411,16 @@ function formatDuration(milliseconds) {
 function formatImageInfo(info) {
   const size = `${info.width}x${info.height}`;
   const original = `${info.originalWidth}x${info.originalHeight}`;
-  if (!info.compressed) return `图片 ${size} PNG`;
+  const crop = formatCropInfo(info.cropInfo);
+  if (!info.compressed) return `图片 ${size} PNG${crop}`;
   const quality = Math.round(Number(info.quality || 0) * 100);
-  return original === size ? `图片 ${size} JPEG ${quality}%` : `图片 ${original} -> ${size} JPEG ${quality}%`;
+  const compression = original === size ? `图片 ${size} JPEG ${quality}%` : `图片 ${original} -> ${size} JPEG ${quality}%`;
+  return `${compression}${crop}`;
+}
+
+function formatCropInfo(cropInfo) {
+  if (!cropInfo?.cropped) return "";
+  return ` · 裁剪 ${cropInfo.originalWidth}x${cropInfo.originalHeight} -> ${cropInfo.width}x${cropInfo.height}`;
 }
 
 function setStatus(message) {

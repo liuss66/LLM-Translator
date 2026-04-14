@@ -448,23 +448,29 @@ async function translateCurrentPage(tabId, windowId) {
   });
 
   const dataUrl = await chrome.tabs.captureVisibleTab(windowId, { format: "png" });
-  await translateScreenshotImage(tabId, dataUrl, {
+  const cropped = await cropPageCaptureMargins(dataUrl);
+  await translateScreenshotImage(tabId, cropped.dataUrl, {
     source: "Current visible page",
     initialTitle: "Recognizing current page...",
-    startedAt
+    startedAt,
+    cropInfo: cropped.info
   });
 }
 
 async function translateScreenshotImage(tabId, imageDataUrl, options) {
   const settings = await getSettings();
   const preparedImage = await prepareImageForModel(imageDataUrl, settings);
+  const imageInfo = {
+    ...preparedImage.info,
+    cropInfo: options.cropInfo
+  };
   await showResult(tabId, {
     title: options.initialTitle,
     source: options.source,
     translation: "Waiting for model response.",
     imageUrl: preparedImage.dataUrl,
     showInputImage: settings.showInputImage,
-    imageInfo: preparedImage.info,
+    imageInfo,
     startedAt: options.startedAt,
     isStreaming: true
   });
@@ -475,7 +481,7 @@ async function translateScreenshotImage(tabId, imageDataUrl, options) {
       translation: removeReasoningBlocks(partial, settings),
       imageUrl: preparedImage.dataUrl,
       showInputImage: settings.showInputImage,
-      imageInfo: preparedImage.info,
+      imageInfo,
       startedAt: options.startedAt,
       isStreaming: true
     });
@@ -487,7 +493,7 @@ async function translateScreenshotImage(tabId, imageDataUrl, options) {
     translation: removeReasoningBlocks(translation, settings),
     imageUrl: preparedImage.dataUrl,
     showInputImage: settings.showInputImage,
-    imageInfo: preparedImage.info,
+    imageInfo,
     startedAt: options.startedAt,
     elapsedMs: Date.now() - options.startedAt
   });
@@ -1033,6 +1039,121 @@ async function cropDataUrl(dataUrl, rect) {
   const blob = await canvas.convertToBlob({ type: "image/png" });
 
   return blobToDataUrl(blob);
+}
+
+async function cropPageCaptureMargins(dataUrl) {
+  const image = await createImageBitmap(await (await fetch(dataUrl)).blob());
+  const width = image.width;
+  const height = image.height;
+  const canvas = new OffscreenCanvas(width, height);
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  context.drawImage(image, 0, 0);
+
+  const pixels = context.getImageData(0, 0, width, height).data;
+  const scanTop = Math.floor(height * 0.12);
+  const scanBottom = Math.floor(height * 0.96);
+  const leftBackground = averageEdgeColor(pixels, width, height, 0, Math.max(2, Math.floor(width * 0.015)), scanTop, scanBottom);
+  const rightBackground = averageEdgeColor(
+    pixels,
+    width,
+    height,
+    Math.max(0, width - Math.max(2, Math.floor(width * 0.015))),
+    width,
+    scanTop,
+    scanBottom
+  );
+
+  const left = findHorizontalContentEdge(pixels, width, height, leftBackground, 1, scanTop, scanBottom);
+  const right = findHorizontalContentEdge(pixels, width, height, rightBackground, -1, scanTop, scanBottom);
+  const pad = Math.max(8, Math.round(width * 0.006));
+  const sx = Math.max(0, left - pad);
+  const ex = Math.min(width, right + pad + 1);
+  const croppedWidth = ex - sx;
+  const removedWidth = width - croppedWidth;
+
+  if (
+    left <= 0 ||
+    right <= left ||
+    croppedWidth < width * 0.35 ||
+    removedWidth < Math.max(80, width * 0.06)
+  ) {
+    return {
+      dataUrl,
+      info: {
+        cropped: false,
+        originalWidth: width,
+        originalHeight: height,
+        width,
+        height
+      }
+    };
+  }
+
+  const output = new OffscreenCanvas(croppedWidth, height);
+  const outputContext = output.getContext("2d");
+  outputContext.drawImage(canvas, sx, 0, croppedWidth, height, 0, 0, croppedWidth, height);
+  const blob = await output.convertToBlob({ type: "image/png" });
+  return {
+    dataUrl: await blobToDataUrl(blob),
+    info: {
+      cropped: true,
+      originalWidth: width,
+      originalHeight: height,
+      width: croppedWidth,
+      height,
+      left: sx,
+      right: width - ex
+    }
+  };
+}
+
+function averageEdgeColor(pixels, width, height, startX, endX, startY, endY) {
+  const color = [0, 0, 0];
+  let count = 0;
+  const stepY = Math.max(4, Math.floor(height / 160));
+  for (let y = startY; y < endY; y += stepY) {
+    for (let x = startX; x < endX; x += 1) {
+      const offset = (y * width + x) * 4;
+      color[0] += pixels[offset];
+      color[1] += pixels[offset + 1];
+      color[2] += pixels[offset + 2];
+      count += 1;
+    }
+  }
+  return count ? color.map((value) => value / count) : [255, 255, 255];
+}
+
+function findHorizontalContentEdge(pixels, width, height, background, direction, startY, endY) {
+  const startX = direction > 0 ? 0 : width - 1;
+  const endX = direction > 0 ? width : -1;
+  const stepY = Math.max(6, Math.floor(height / 140));
+  const columnStep = direction > 0 ? 1 : -1;
+  for (let x = startX; x !== endX; x += columnStep) {
+    if (isDocumentColumn(pixels, width, x, background, startY, endY, stepY)) {
+      return x;
+    }
+  }
+  return direction > 0 ? 0 : width - 1;
+}
+
+function isDocumentColumn(pixels, width, x, background, startY, endY, stepY) {
+  let foreground = 0;
+  let total = 0;
+  for (let y = startY; y < endY; y += stepY) {
+    const offset = (y * width + x) * 4;
+    if (colorDistance(pixels[offset], pixels[offset + 1], pixels[offset + 2], background) > 48) {
+      foreground += 1;
+    }
+    total += 1;
+  }
+  return total > 0 && foreground / total > 0.35;
+}
+
+function colorDistance(r, g, b, color) {
+  const dr = r - color[0];
+  const dg = g - color[1];
+  const db = b - color[2];
+  return Math.sqrt(dr * dr + dg * dg + db * db);
 }
 
 async function prepareImageForModel(dataUrl, settings) {
