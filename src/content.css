@@ -171,9 +171,10 @@
 }
 
 .llmt-panel__translation table {
-  width: max-content;
+  width: 100%;
   min-width: 100%;
   border-collapse: collapse;
+  table-layout: auto;
   font: inherit;
 }
 
@@ -182,8 +183,8 @@
   border: 1px solid #d0d7de;
   padding: 6px 8px;
   vertical-align: top;
-  overflow-wrap: normal;
-  word-break: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .llmt-panel__translation th {

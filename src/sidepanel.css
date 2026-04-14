@@ -350,9 +350,10 @@ header button {
 
 #result-translation table,
 .chat-message__content table {
-  width: max-content;
+  width: 100%;
   min-width: 100%;
   border-collapse: collapse;
+  table-layout: auto;
   font: inherit;
 }
 
@@ -363,8 +364,8 @@ header button {
   border: 1px solid #d0d7de;
   padding: 6px 8px;
   vertical-align: top;
-  overflow-wrap: normal;
-  word-break: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 #result-translation th,

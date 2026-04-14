@@ -1,11 +1,10 @@
-# Release v0.3.2
+# Release v0.3.3
 
-## Fixes
+## Improvements
 
-- Fixed intermittent side panel open failures caused by passing Chrome's `WINDOW_ID_CURRENT` sentinel value to `sidePanel.open()`.
-- Fixed popup side panel opening so it stays inside the user click gesture required by Chrome.
-- Added active tab/window fallback handling for shortcut and content-script side panel entry points.
+- Improved Markdown table layout so table cells wrap automatically instead of forcing horizontal scrolling.
+- Keeps horizontal overflow protection for extreme content while making normal tables easier to read in the floating panel and side panel.
 
 ## Notes
 
-- Reload the extension after updating so the background service worker and popup script are refreshed.
+- Reload the extension after updating so the refreshed table styles are applied.
