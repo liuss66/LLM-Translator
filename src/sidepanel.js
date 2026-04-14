@@ -419,7 +419,8 @@ function formatImageInfo(info) {
 }
 
 function formatCropInfo(cropInfo) {
-  if (!cropInfo?.cropped) return "";
+  if (!cropInfo) return "";
+  if (!cropInfo.cropped) return cropInfo.reason ? ` · 未裁剪: ${cropInfo.reason}` : "";
   return ` · 裁剪 ${cropInfo.originalWidth}x${cropInfo.originalHeight} -> ${cropInfo.width}x${cropInfo.height}`;
 }
 

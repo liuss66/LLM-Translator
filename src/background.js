@@ -1050,8 +1050,8 @@ async function cropPageCaptureMargins(dataUrl) {
   context.drawImage(image, 0, 0);
 
   const pixels = context.getImageData(0, 0, width, height).data;
-  const scanTop = Math.floor(height * 0.12);
-  const scanBottom = Math.floor(height * 0.96);
+  const scanTop = Math.floor(height * 0.08);
+  const scanBottom = Math.floor(height * 0.98);
   const leftBackground = averageEdgeColor(pixels, width, height, 0, Math.max(2, Math.floor(width * 0.015)), scanTop, scanBottom);
   const rightBackground = averageEdgeColor(
     pixels,
@@ -1065,22 +1065,19 @@ async function cropPageCaptureMargins(dataUrl) {
 
   const left = findHorizontalContentEdge(pixels, width, height, leftBackground, 1, scanTop, scanBottom);
   const right = findHorizontalContentEdge(pixels, width, height, rightBackground, -1, scanTop, scanBottom);
-  const pad = Math.max(8, Math.round(width * 0.006));
+  const pad = Math.max(4, Math.round(width * 0.003));
   const sx = Math.max(0, left - pad);
   const ex = Math.min(width, right + pad + 1);
   const croppedWidth = ex - sx;
   const removedWidth = width - croppedWidth;
+  const reason = getPageCropSkipReason({ left, right, croppedWidth, removedWidth, width });
 
-  if (
-    left <= 0 ||
-    right <= left ||
-    croppedWidth < width * 0.35 ||
-    removedWidth < Math.max(80, width * 0.06)
-  ) {
+  if (reason) {
     return {
       dataUrl,
       info: {
         cropped: false,
+        reason,
         originalWidth: width,
         originalHeight: height,
         width,
@@ -1105,6 +1102,14 @@ async function cropPageCaptureMargins(dataUrl) {
       right: width - ex
     }
   };
+}
+
+function getPageCropSkipReason({ left, right, croppedWidth, removedWidth, width }) {
+  if (left <= 0 && right >= width - 1) return "未检测到左右阅读器空白";
+  if (right <= left) return "检测到的页面边界无效";
+  if (croppedWidth < width * 0.35) return "检测到的页面区域过窄，已跳过裁剪";
+  if (removedWidth < Math.max(48, width * 0.035)) return "左右空白较小，已跳过裁剪";
+  return "";
 }
 
 function averageEdgeColor(pixels, width, height, startX, endX, startY, endY) {
@@ -1137,16 +1142,21 @@ function findHorizontalContentEdge(pixels, width, height, background, direction,
 }
 
 function isDocumentColumn(pixels, width, x, background, startY, endY, stepY) {
-  let foreground = 0;
+  let documentLike = 0;
   let total = 0;
   for (let y = startY; y < endY; y += stepY) {
     const offset = (y * width + x) * 4;
-    if (colorDistance(pixels[offset], pixels[offset + 1], pixels[offset + 2], background) > 48) {
-      foreground += 1;
+    const r = pixels[offset];
+    const g = pixels[offset + 1];
+    const b = pixels[offset + 2];
+    const distance = colorDistance(r, g, b, background);
+    const brightness = (r + g + b) / 3;
+    if (distance > 22 || brightness > 248) {
+      documentLike += 1;
     }
     total += 1;
   }
-  return total > 0 && foreground / total > 0.35;
+  return total > 0 && documentLike / total > 0.18;
 }
 
 function colorDistance(r, g, b, color) {
