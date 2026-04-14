@@ -1064,7 +1064,10 @@ async function cropPageCaptureMargins(dataUrl) {
   );
 
   const left = findHorizontalContentEdge(pixels, width, height, leftBackground, 1, scanTop, scanBottom);
-  const right = findHorizontalContentEdge(pixels, width, height, rightBackground, -1, scanTop, scanBottom);
+  let right = findHorizontalContentEdge(pixels, width, height, rightBackground, -1, scanTop, scanBottom);
+  if (left > width * 0.05 && right >= width - 1) {
+    right = Math.max(left + 1, width - left - 1);
+  }
   const pad = Math.max(4, Math.round(width * 0.003));
   const sx = Math.max(0, left - pad);
   const ex = Math.min(width, right + pad + 1);
@@ -1144,6 +1147,8 @@ function findHorizontalContentEdge(pixels, width, height, background, direction,
 function isDocumentColumn(pixels, width, x, background, startY, endY, stepY) {
   let documentLike = 0;
   let total = 0;
+  const backgroundBrightness = (background[0] + background[1] + background[2]) / 3;
+  const useBrightPageDetection = backgroundBrightness < 245;
   for (let y = startY; y < endY; y += stepY) {
     const offset = (y * width + x) * 4;
     const r = pixels[offset];
@@ -1151,7 +1156,7 @@ function isDocumentColumn(pixels, width, x, background, startY, endY, stepY) {
     const b = pixels[offset + 2];
     const distance = colorDistance(r, g, b, background);
     const brightness = (r + g + b) / 3;
-    if (distance > 22 || brightness > 248) {
+    if (distance > 22 || (useBrightPageDetection && brightness > 248)) {
       documentLike += 1;
     }
     total += 1;
