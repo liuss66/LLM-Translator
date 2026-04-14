@@ -165,6 +165,7 @@
 }
 
 .llmt-panel__translation pre {
+  position: relative;
   overflow-x: auto;
   overflow-y: hidden;
   max-width: 100%;
@@ -178,6 +179,49 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   word-break: break-word;
+}
+
+.llmt-panel__translation pre code {
+  display: block;
+  padding-top: 14px;
+}
+
+.llmt-panel__translation code:not([data-language]) {
+  color: #0550ae;
+}
+
+.llmt-panel__translation .llmt-code-language {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  color: #57606a;
+  font: 700 10px/1 Arial, Helvetica, sans-serif;
+  text-transform: uppercase;
+}
+
+.llmt-panel__translation .llmt-token--comment {
+  color: #6e7781;
+}
+
+.llmt-panel__translation .llmt-token--keyword {
+  color: #cf222e;
+}
+
+.llmt-panel__translation .llmt-token--string {
+  color: #0a3069;
+}
+
+.llmt-panel__translation .llmt-token--number {
+  color: #0550ae;
+}
+
+.llmt-panel__translation .llmt-token--function {
+  color: #8250df;
+}
+
+.llmt-panel__translation .llmt-token--property,
+.llmt-panel__translation .llmt-token--key {
+  color: #953800;
 }
 
 .llmt-panel__translation hr {

@@ -347,6 +347,7 @@ header button {
 }
 
 #result-translation pre {
+  position: relative;
   overflow-x: auto;
   overflow-y: hidden;
   max-width: 100%;
@@ -360,6 +361,59 @@ header button {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   word-break: break-word;
+}
+
+#result-translation pre code,
+.chat-message__content pre code {
+  display: block;
+  padding-top: 14px;
+}
+
+#result-translation code:not([data-language]),
+.chat-message__content code:not([data-language]) {
+  color: #0550ae;
+}
+
+#result-translation .llmt-code-language,
+.chat-message__content .llmt-code-language {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  color: #57606a;
+  font: 700 10px/1 Arial, Helvetica, sans-serif;
+  text-transform: uppercase;
+}
+
+#result-translation .llmt-token--comment,
+.chat-message__content .llmt-token--comment {
+  color: #6e7781;
+}
+
+#result-translation .llmt-token--keyword,
+.chat-message__content .llmt-token--keyword {
+  color: #cf222e;
+}
+
+#result-translation .llmt-token--string,
+.chat-message__content .llmt-token--string {
+  color: #0a3069;
+}
+
+#result-translation .llmt-token--number,
+.chat-message__content .llmt-token--number {
+  color: #0550ae;
+}
+
+#result-translation .llmt-token--function,
+.chat-message__content .llmt-token--function {
+  color: #8250df;
+}
+
+#result-translation .llmt-token--property,
+#result-translation .llmt-token--key,
+.chat-message__content .llmt-token--property,
+.chat-message__content .llmt-token--key {
+  color: #953800;
 }
 
 #result-translation hr,
