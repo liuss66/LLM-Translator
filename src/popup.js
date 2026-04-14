@@ -7,8 +7,10 @@ const imageJpegQuality = document.querySelector("#image-jpeg-quality");
 const enableThinking = document.querySelector("#enable-thinking");
 const cropPageMargins = document.querySelector("#crop-page-margins");
 const modelPreset = document.querySelector("#model-preset");
+let activeTabContext = null;
 
 loadSettings();
+refreshActiveTabContext();
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName === "sync" && changes.showOcrResult) {
@@ -147,9 +149,11 @@ document.querySelector("#translate-page").addEventListener("click", async () => 
 
 document.querySelector("#open-side-panel").addEventListener("click", async () => {
   try {
-    const openPromise = chrome.sidePanel.open({ windowId: chrome.windows.WINDOW_ID_CURRENT });
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    await chrome.runtime.sendMessage({ type: "mark-side-panel-open", tabId: tab?.id });
+    if (!activeTabContext?.windowId) {
+      throw new Error("No active browser window found. Reopen the extension popup and try again.");
+    }
+    const openPromise = chrome.sidePanel.open({ windowId: activeTabContext.windowId });
+    await chrome.runtime.sendMessage({ type: "mark-side-panel-open", tabId: activeTabContext.tabId });
     await openPromise;
     window.close();
   } catch (error) {
@@ -174,6 +178,15 @@ async function loadSettings() {
   imageJpegQuality.value = settings.imageJpegQuality || 0.88;
   enableThinking.checked = Boolean(settings.enableThinking);
   renderPresetOptions(settings.modelPresets || [], settings.currentPresetId || "");
+}
+
+async function refreshActiveTabContext() {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab?.id || !isValidWindowId(tab.windowId)) return;
+  activeTabContext = {
+    tabId: tab.id,
+    windowId: tab.windowId
+  };
 }
 
 function renderPresetOptions(presets, currentPresetId) {
@@ -268,4 +281,8 @@ function clampNumber(value, min, max, fallback) {
   const number = Number.parseFloat(value);
   if (!Number.isFinite(number)) return fallback;
   return Math.min(max, Math.max(min, number));
+}
+
+function isValidWindowId(windowId) {
+  return Number.isInteger(windowId) && windowId >= 0;
 }

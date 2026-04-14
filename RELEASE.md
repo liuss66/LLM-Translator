@@ -1,17 +1,11 @@
-# Release v0.3.1
+# Release v0.3.2
 
-## Highlights
+## Fixes
 
-- Added Markdown table rendering for translated text and follow-up answers.
-- Added the `@Liuss` brand mark next to the visible `LLM Translator` title.
+- Fixed intermittent side panel open failures caused by passing Chrome's `WINDOW_ID_CURRENT` sentinel value to `sidePanel.open()`.
+- Fixed popup side panel opening so it stays inside the user click gesture required by Chrome.
+- Added active tab/window fallback handling for shortcut and content-script side panel entry points.
 
-## Table Rendering
+## Notes
 
-- Supports GitHub-style pipe tables with header separators.
-- Supports left, right, and center column alignment.
-- Preserves escaped pipe characters and LaTeX backslashes inside table cells.
-- Adds horizontal scrolling for wide tables in the floating panel and side panel.
-
-## UI Changes
-
-- Shows `@Liuss` in small text after the `LLM Translator` title in the popup, side panel, options page, and floating translation panel.
+- Reload the extension after updating so the background service worker and popup script are refreshed.

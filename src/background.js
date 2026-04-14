@@ -117,13 +117,8 @@ chrome.commands.onCommand.addListener(async (command) => {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === "open-side-panel" && sender.tab?.id) {
-    const openPromise = chrome.sidePanel.open({
-      tabId: sender.tab.id
-    });
-    chrome.storage.session.set({ sidePanelOpen: true });
-    openPromise
-      .then(async () => {
-        await hideFloatingPanel(sender.tab.id);
+    openSidePanel(sender.tab)
+      .then(() => {
         sendResponse({ ok: true });
       })
       .catch((error) => {
@@ -280,10 +275,26 @@ async function getActiveTabId() {
 }
 
 async function getActiveTab() {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const [currentWindowTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (isUsableTab(currentWindowTab)) return currentWindowTab;
+
+  const [lastFocusedTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  if (isUsableTab(lastFocusedTab)) return lastFocusedTab;
+
+  const lastFocusedWindow = await chrome.windows.getLastFocused({ windowTypes: ["normal"] });
+  if (!isValidWindowId(lastFocusedWindow?.id)) throw new Error("No active window found.");
+  const [tab] = await chrome.tabs.query({ active: true, windowId: lastFocusedWindow.id });
   if (!tab?.id) throw new Error("No active tab found.");
-  if (!tab.windowId) throw new Error("No active window found.");
+  if (!isValidWindowId(tab.windowId)) throw new Error("No active window found.");
   return tab;
+}
+
+function isUsableTab(tab) {
+  return Boolean(tab?.id && isValidWindowId(tab.windowId));
+}
+
+function isValidWindowId(windowId) {
+  return Number.isInteger(windowId) && windowId >= 0;
 }
 
 async function runForTab(tabId, task) {
@@ -302,6 +313,9 @@ async function runForTab(tabId, task) {
 async function openSidePanel(tab) {
   if (!chrome.sidePanel?.open) {
     throw new Error("Chrome side panel API is not available in this browser.");
+  }
+  if (!tab?.id) {
+    tab = await getActiveTab();
   }
   await chrome.sidePanel.open({ tabId: tab.id });
   await chrome.storage.session.set({ sidePanelOpen: true });
