@@ -11,6 +11,12 @@
 - 改进常见错误提示，减少直接暴露长 JSON 或底层异常。
 - 增加商城上传包和 release 脚本，发布包会排除 `.git`、docs、tests、scripts 等开发文件。
 
+## 演示视频
+
+<video src="assets/demo.mp4" controls muted playsinline></video>
+
+[查看演示视频](assets/demo.mp4)
+
 ## 功能
 
 - 右键翻译选中的文本。
