@@ -8,6 +8,7 @@ const DEFAULT_SETTINGS = {
   showOcrResult: false,
   showInputImage: false,
   compressInputImage: true,
+  cropPageMargins: true,
   imageMaxEdge: 1600,
   imageJpegQuality: 0.88,
   enableThinking: false,
@@ -448,12 +449,21 @@ async function translateCurrentPage(tabId, windowId) {
   });
 
   const dataUrl = await chrome.tabs.captureVisibleTab(windowId, { format: "png" });
-  const cropped = await cropPageCaptureMargins(dataUrl);
-  await translateScreenshotImage(tabId, cropped.dataUrl, {
+  const settings = await readSettings();
+  const pageImage = settings.cropPageMargins
+    ? await cropPageCaptureMargins(dataUrl)
+    : {
+        dataUrl,
+        info: {
+          cropped: false,
+          reason: "裁剪已关闭"
+        }
+      };
+  await translateScreenshotImage(tabId, pageImage.dataUrl, {
     source: "Current visible page",
     initialTitle: "Recognizing current page...",
     startedAt,
-    cropInfo: cropped.info
+    cropInfo: pageImage.info
   });
 }
 
@@ -563,6 +573,7 @@ async function readSettings() {
 
   settings.apiBaseUrl = settings.apiBaseUrl.replace(/\/+$/, "");
   settings.compressInputImage = Boolean(settings.compressInputImage);
+  settings.cropPageMargins = settings.cropPageMargins !== false;
   settings.imageMaxEdge = clampInteger(settings.imageMaxEdge, 320, 4096, DEFAULT_SETTINGS.imageMaxEdge);
   settings.imageJpegQuality = clampNumber(
     settings.imageJpegQuality,

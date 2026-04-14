@@ -5,6 +5,7 @@ const compressInputImage = document.querySelector("#compress-input-image");
 const imageMaxEdge = document.querySelector("#image-max-edge");
 const imageJpegQuality = document.querySelector("#image-jpeg-quality");
 const enableThinking = document.querySelector("#enable-thinking");
+const cropPageMargins = document.querySelector("#crop-page-margins");
 const modelPreset = document.querySelector("#model-preset");
 
 loadSettings();
@@ -27,6 +28,9 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   }
   if (areaName === "sync" && changes.enableThinking) {
     enableThinking.checked = Boolean(changes.enableThinking.newValue);
+  }
+  if (areaName === "sync" && changes.cropPageMargins) {
+    cropPageMargins.checked = changes.cropPageMargins.newValue !== false;
   }
   if (
     areaName === "sync" &&
@@ -61,6 +65,13 @@ compressInputImage.addEventListener("change", async () => {
   await chrome.runtime.sendMessage({
     type: "update-settings",
     settings: { compressInputImage: compressInputImage.checked }
+  });
+});
+
+cropPageMargins.addEventListener("change", async () => {
+  await chrome.runtime.sendMessage({
+    type: "update-settings",
+    settings: { cropPageMargins: cropPageMargins.checked }
   });
 });
 
@@ -158,6 +169,7 @@ async function loadSettings() {
   showOcrResult.checked = Boolean(settings.showOcrResult);
   showInputImage.checked = Boolean(settings.showInputImage);
   compressInputImage.checked = settings.compressInputImage !== false;
+  cropPageMargins.checked = settings.cropPageMargins !== false;
   imageMaxEdge.value = settings.imageMaxEdge || 1600;
   imageJpegQuality.value = settings.imageJpegQuality || 0.88;
   enableThinking.checked = Boolean(settings.enableThinking);
