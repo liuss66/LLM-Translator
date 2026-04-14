@@ -15,6 +15,7 @@ const compressInputImage = document.querySelector("#compress-input-image");
 const imageMaxEdge = document.querySelector("#image-max-edge");
 const imageJpegQuality = document.querySelector("#image-jpeg-quality");
 const enableThinking = document.querySelector("#enable-thinking");
+const cropPageMargins = document.querySelector("#crop-page-margins");
 const modelPreset = document.querySelector("#model-preset");
 let chatHistory = [];
 let hasScreenshotContext = false;
@@ -58,6 +59,9 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   }
   if (areaName === "sync" && changes.enableThinking) {
     enableThinking.checked = Boolean(changes.enableThinking.newValue);
+  }
+  if (areaName === "sync" && changes.cropPageMargins) {
+    cropPageMargins.checked = changes.cropPageMargins.newValue !== false;
   }
   if (
     areaName === "sync" &&
@@ -130,6 +134,13 @@ compressInputImage.addEventListener("change", async () => {
   await chrome.runtime.sendMessage({
     type: "update-settings",
     settings: { compressInputImage: compressInputImage.checked }
+  });
+});
+
+cropPageMargins.addEventListener("change", async () => {
+  await chrome.runtime.sendMessage({
+    type: "update-settings",
+    settings: { cropPageMargins: cropPageMargins.checked }
   });
 });
 
@@ -227,6 +238,7 @@ async function loadSettings() {
   showOcrResult.checked = Boolean(settings.showOcrResult);
   showInputImage.checked = Boolean(settings.showInputImage);
   compressInputImage.checked = settings.compressInputImage !== false;
+  cropPageMargins.checked = settings.cropPageMargins !== false;
   imageMaxEdge.value = settings.imageMaxEdge || 1600;
   imageJpegQuality.value = settings.imageJpegQuality || 0.88;
   enableThinking.checked = Boolean(settings.enableThinking);
@@ -411,9 +423,17 @@ function formatDuration(milliseconds) {
 function formatImageInfo(info) {
   const size = `${info.width}x${info.height}`;
   const original = `${info.originalWidth}x${info.originalHeight}`;
-  if (!info.compressed) return `图片 ${size} PNG`;
+  const crop = formatCropInfo(info.cropInfo);
+  if (!info.compressed) return `图片 ${size} PNG${crop}`;
   const quality = Math.round(Number(info.quality || 0) * 100);
-  return original === size ? `图片 ${size} JPEG ${quality}%` : `图片 ${original} -> ${size} JPEG ${quality}%`;
+  const compression = original === size ? `图片 ${size} JPEG ${quality}%` : `图片 ${original} -> ${size} JPEG ${quality}%`;
+  return `${compression}${crop}`;
+}
+
+function formatCropInfo(cropInfo) {
+  if (!cropInfo) return "";
+  if (!cropInfo.cropped) return cropInfo.reason ? ` · 未裁剪: ${cropInfo.reason}` : "";
+  return ` · 裁剪 ${cropInfo.originalWidth}x${cropInfo.originalHeight} -> ${cropInfo.width}x${cropInfo.height}`;
 }
 
 function setStatus(message) {

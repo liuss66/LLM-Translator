@@ -8,6 +8,7 @@ const DEFAULT_SETTINGS = {
   showOcrResult: false,
   showInputImage: false,
   compressInputImage: true,
+  cropPageMargins: true,
   imageMaxEdge: 1600,
   imageJpegQuality: 0.88,
   enableThinking: false,
@@ -200,6 +201,7 @@ function readFormSettings() {
           key !== "showOcrResult" &&
           key !== "showInputImage" &&
           key !== "compressInputImage" &&
+          key !== "cropPageMargins" &&
           key !== "enableThinking" &&
           key !== "currentPresetId" &&
           key !== "modelPresets"
@@ -209,6 +211,7 @@ function readFormSettings() {
   settings.showOcrResult = form.elements.showOcrResult.checked;
   settings.showInputImage = form.elements.showInputImage.checked;
   settings.compressInputImage = form.elements.compressInputImage.checked;
+  settings.cropPageMargins = form.elements.cropPageMargins.checked;
   settings.imageMaxEdge = clampInteger(form.elements.imageMaxEdge.value, 320, 4096, 1600);
   settings.imageJpegQuality = clampNumber(form.elements.imageJpegQuality.value, 0.5, 1, 0.88);
   settings.enableThinking = form.elements.enableThinking.checked;

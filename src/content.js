@@ -106,6 +106,12 @@
     if (payload.isStreaming) {
       parts.push("流式输出中");
     }
+    if (payload.imageInfo?.cropInfo?.cropped) {
+      const crop = payload.imageInfo.cropInfo;
+      parts.push(`裁剪 ${crop.originalWidth}x${crop.originalHeight} -> ${crop.width}x${crop.height}`);
+    } else if (payload.imageInfo?.cropInfo?.reason) {
+      parts.push(`未裁剪: ${payload.imageInfo.cropInfo.reason}`);
+    }
     return parts.join(" · ");
   }
 
