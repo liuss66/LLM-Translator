@@ -1,10 +1,11 @@
-# Release v0.3.3
+# Release v0.3.4
 
-## Improvements
+## Fixes
 
-- Improved Markdown table layout so table cells wrap automatically instead of forcing horizontal scrolling.
-- Keeps horizontal overflow protection for extreme content while making normal tables easier to read in the floating panel and side panel.
+- Added Markdown horizontal rule rendering for separator lines such as `---`, `***`, and `___`.
+- Added safe inline `<sup>` and `<sub>` rendering for superscript and subscript text.
+- Kept other raw HTML escaped while allowing only supported superscript and subscript tags.
 
 ## Notes
 
-- Reload the extension after updating so the refreshed table styles are applied.
+- Reload the extension after updating so the refreshed Markdown renderer and styles are applied.

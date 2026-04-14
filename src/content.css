@@ -134,6 +134,7 @@
 .llmt-panel__translation ol,
 .llmt-panel__translation pre,
 .llmt-panel__translation .llmt-table-wrap,
+.llmt-panel__translation hr,
 .llmt-panel__translation h1,
 .llmt-panel__translation h2,
 .llmt-panel__translation h3,
@@ -162,6 +163,11 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   word-break: break-word;
+}
+
+.llmt-panel__translation hr {
+  border: 0;
+  border-top: 1px solid #d0d7de;
 }
 
 .llmt-panel__translation .llmt-table-wrap {

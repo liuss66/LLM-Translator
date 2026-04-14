@@ -311,6 +311,8 @@ header button {
 #result-translation pre,
 #result-translation .llmt-table-wrap,
 .chat-message__content .llmt-table-wrap,
+#result-translation hr,
+.chat-message__content hr,
 #result-translation h1,
 #result-translation h2,
 #result-translation h3,
@@ -339,6 +341,12 @@ header button {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   word-break: break-word;
+}
+
+#result-translation hr,
+.chat-message__content hr {
+  border: 0;
+  border-top: 1px solid #d0d7de;
 }
 
 #result-translation .llmt-table-wrap,

@@ -49,6 +49,12 @@
         continue;
       }
 
+      if (isHorizontalRule(line)) {
+        blocks.push("<hr>");
+        index += 1;
+        continue;
+      }
+
       const tableBlock = readTableBlock(lines, index);
       if (tableBlock) {
         blocks.push(renderTable(tableBlock));
@@ -84,6 +90,7 @@
         !lines[index].startsWith("```") &&
         !isMathBlockStart(lines[index]) &&
         !/^(#{1,6})\s+/.test(lines[index]) &&
+        !isHorizontalRule(lines[index]) &&
         !readTableBlock(lines, index) &&
         !/^\s*[-*]\s+/.test(lines[index]) &&
         !/^\s*\d+\.\s+/.test(lines[index])
@@ -95,6 +102,10 @@
     }
 
     return blocks.join("");
+  }
+
+  function isHorizontalRule(line) {
+    return /^\s{0,3}([-*_])(?:\s*\1){2,}\s*$/.test(String(line || ""));
   }
 
   function readTableBlock(lines, startIndex) {
@@ -210,8 +221,19 @@
   }
 
   function renderInline(value) {
+    const htmlTokens = [];
+    const withInlineHtml = String(value).replace(
+      /<(sup|sub)>([\s\S]*?)<\/\1>/gi,
+      (_match, tagName, content) => {
+        const tag = tagName.toLowerCase();
+        const token = `@@LLMT_HTML_${htmlTokens.length}@@`;
+        htmlTokens.push(`<${tag}>${renderInline(content)}</${tag}>`);
+        return token;
+      }
+    );
+
     const mathTokens = [];
-    const tokenized = String(value).replace(
+    const tokenized = withInlineHtml.replace(
       /\\\((.+?)\\\)|(?<!\$)\$([^$\n]+?)\$(?!\$)/g,
       (_match, parenMath, dollarMath) => {
         const token = `@@LLMT_MATH_${mathTokens.length}@@`;
@@ -235,6 +257,10 @@
 
     mathTokens.forEach((math, index) => {
       html = html.replace(`@@LLMT_MATH_${index}@@`, math);
+    });
+
+    htmlTokens.forEach((inlineHtml, index) => {
+      html = html.replace(`@@LLMT_HTML_${index}@@`, inlineHtml);
     });
 
     return html;
