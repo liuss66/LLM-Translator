@@ -1,89 +1,109 @@
 (function () {
+  let activeFootnoteContext = null;
+
   function renderMarkdown(markdown) {
-    const text = String(markdown || "");
-    const blocks = [];
-    const lines = text.replace(/\r\n/g, "\n").split("\n");
-    let index = 0;
+    const rootRender = !activeFootnoteContext;
+    const footnoteContext = rootRender
+      ? extractFootnotes(String(markdown || ""))
+      : activeFootnoteContext;
+    activeFootnoteContext = footnoteContext;
 
-    while (index < lines.length) {
-      const line = lines[index];
+    try {
+      const text = rootRender ? footnoteContext.body : String(markdown || "");
+      const blocks = [];
+      const lines = text.replace(/\r\n/g, "\n").split("\n");
+      let index = 0;
 
-      if (!line.trim()) {
+      while (index < lines.length) {
+        const line = lines[index];
+
+        if (!line.trim()) {
+          index += 1;
+          continue;
+        }
+
+        const mathBlock = readMathBlock(lines, index);
+        if (mathBlock) {
+          blocks.push(
+            `<div class="llmt-math llmt-math--block">${renderMathExpression(mathBlock.content, true)}</div>${
+              mathBlock.trailing ? `<p>${renderInline(mathBlock.trailing)}</p>` : ""
+            }`
+          );
+          index = mathBlock.nextIndex;
+          continue;
+        }
+
+        if (line.startsWith("```")) {
+          const language = normalizeCodeLanguage(line.slice(3).trim());
+          const code = [];
+          index += 1;
+          while (index < lines.length && !lines[index].startsWith("```")) {
+            code.push(lines[index]);
+            index += 1;
+          }
+          index += index < lines.length ? 1 : 0;
+          blocks.push(renderCodeBlock(code.join("\n"), language));
+          continue;
+        }
+
+        const heading = /^(#{1,6})\s+(.+)$/.exec(line);
+        if (heading) {
+          const level = heading[1].length;
+          blocks.push(`<h${level}>${renderInline(heading[2])}</h${level}>`);
+          index += 1;
+          continue;
+        }
+
+        if (isHorizontalRule(line)) {
+          blocks.push("<hr>");
+          index += 1;
+          continue;
+        }
+
+        const blockquote = readBlockquoteBlock(lines, index);
+        if (blockquote) {
+          blocks.push(blockquote.html);
+          index = blockquote.nextIndex;
+          continue;
+        }
+
+        const tableBlock = readTableBlock(lines, index);
+        if (tableBlock) {
+          blocks.push(renderTable(tableBlock));
+          index = tableBlock.nextIndex;
+          continue;
+        }
+
+        const listBlock = readListBlock(lines, index);
+        if (listBlock) {
+          blocks.push(listBlock.html);
+          index = listBlock.nextIndex;
+          continue;
+        }
+
+        const paragraph = [line];
         index += 1;
-        continue;
-      }
-
-      const mathBlock = readMathBlock(lines, index);
-      if (mathBlock) {
-        blocks.push(
-          `<div class="llmt-math llmt-math--block">${renderMathExpression(mathBlock.content, true)}</div>${
-            mathBlock.trailing ? `<p>${renderInline(mathBlock.trailing)}</p>` : ""
-          }`
-        );
-        index = mathBlock.nextIndex;
-        continue;
-      }
-
-      if (line.startsWith("```")) {
-        const language = normalizeCodeLanguage(line.slice(3).trim());
-        const code = [];
-        index += 1;
-        while (index < lines.length && !lines[index].startsWith("```")) {
-          code.push(lines[index]);
+        while (
+          index < lines.length &&
+          lines[index].trim() &&
+          !lines[index].startsWith("```") &&
+          !isMathBlockStart(lines[index]) &&
+          !/^(#{1,6})\s+/.test(lines[index]) &&
+          !isHorizontalRule(lines[index]) &&
+          !isBlockquoteStart(lines[index]) &&
+          !readTableBlock(lines, index) &&
+          !parseListMarker(lines[index])
+        ) {
+          paragraph.push(lines[index]);
           index += 1;
         }
-        index += index < lines.length ? 1 : 0;
-        blocks.push(renderCodeBlock(code.join("\n"), language));
-        continue;
+        blocks.push(`<p>${renderInline(paragraph.join("\n")).replace(/\n/g, "<br>")}</p>`);
       }
 
-      const heading = /^(#{1,6})\s+(.+)$/.exec(line);
-      if (heading) {
-        const level = heading[1].length;
-        blocks.push(`<h${level}>${renderInline(heading[2])}</h${level}>`);
-        index += 1;
-        continue;
-      }
-
-      if (isHorizontalRule(line)) {
-        blocks.push("<hr>");
-        index += 1;
-        continue;
-      }
-
-      const tableBlock = readTableBlock(lines, index);
-      if (tableBlock) {
-        blocks.push(renderTable(tableBlock));
-        index = tableBlock.nextIndex;
-        continue;
-      }
-
-      const listBlock = readListBlock(lines, index);
-      if (listBlock) {
-        blocks.push(listBlock.html);
-        index = listBlock.nextIndex;
-        continue;
-      }
-
-      const paragraph = [line];
-      index += 1;
-      while (
-        index < lines.length &&
-        lines[index].trim() &&
-        !lines[index].startsWith("```") &&
-        !isMathBlockStart(lines[index]) &&
-        !/^(#{1,6})\s+/.test(lines[index]) &&
-        !isHorizontalRule(lines[index]) &&
-        !readTableBlock(lines, index) &&
-        !parseListMarker(lines[index])
-      ) {
-        paragraph.push(lines[index]);
-        index += 1;
-      }
-      blocks.push(`<p>${renderInline(paragraph.join("\n")).replace(/\n/g, "<br>")}</p>`);
+      return blocks.join("") + (rootRender ? renderFootnotes(footnoteContext) : "");
+    } finally {
+      if (rootRender) activeFootnoteContext = null;
     }
-
-    return blocks.join("");
   }
 
   function renderCodeBlock(code, language) {
@@ -217,6 +237,28 @@
 
   function isHorizontalRule(line) {
     return /^\s{0,3}([-*_])(?:\s*\1){2,}\s*$/.test(String(line || ""));
+  }
+
+  function readBlockquoteBlock(lines, startIndex) {
+    if (!isBlockquoteStart(lines[startIndex])) return null;
+
+    const content = [];
+    let index = startIndex;
+    while (index < lines.length) {
+      const match = /^\s{0,3}>\s?(.*)$/.exec(lines[index]);
+      if (!match) break;
+      content.push(match[1]);
+      index += 1;
+    }
+
+    return {
+      html: `<blockquote>${renderMarkdown(content.join("\n"))}</blockquote>`,
+      nextIndex: index
+    };
+  }
+
+  function isBlockquoteStart(line) {
+    return /^\s{0,3}>/.test(String(line || ""));
   }
 
   function readListBlock(lines, startIndex) {
@@ -469,8 +511,15 @@
   }
 
   function renderInline(value) {
+    const codeTokens = [];
+    const withCode = String(value).replace(/`([^`\n]+)`/g, (_match, content) => {
+      const token = `@@LLMT_CODE_${codeTokens.length}@@`;
+      codeTokens.push(`<code>${escapeHtml(content)}</code>`);
+      return token;
+    });
+
     const htmlTokens = [];
-    const withInlineHtml = String(value).replace(
+    const withInlineHtml = withCode.replace(
       /<(sup|sub)>([\s\S]*?)<\/\1>/gi,
       (_match, tagName, content) => {
         const tag = tagName.toLowerCase();
@@ -495,13 +544,20 @@
     );
 
     let html = escapeHtml(tokenized)
-      .replace(/`([^`]+)`/g, "<code>$1</code>")
+      .replace(/\[\^([^\]\s]+)\]/g, (_match, id) => renderFootnoteReference(id))
       .replace(/~~([^~]+)~~/g, "<del>$1</del>")
       .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
       .replace(/\*([^*]+)\*/g, "<em>$1</em>")
       .replace(
         /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g,
         '<a href="$2" target="_blank" rel="noreferrer noopener">$1</a>'
+      )
+      .replace(
+        /(^|[\s(])((?:https?:\/\/|www\.)[^\s<>()]+[^\s<>().,;:!?])/g,
+        (_match, prefix, url) => {
+          const href = url.startsWith("www.") ? `https://${url}` : url;
+          return `${prefix}<a href="${href}" target="_blank" rel="noreferrer noopener">${url}</a>`;
+        }
       );
 
     mathTokens.forEach((math, index) => {
@@ -512,7 +568,65 @@
       html = html.replace(`@@LLMT_HTML_${index}@@`, inlineHtml);
     });
 
+    codeTokens.forEach((code, index) => {
+      html = html.replace(`@@LLMT_CODE_${index}@@`, code);
+    });
+
     return html;
+  }
+
+  function extractFootnotes(markdown) {
+    const lines = String(markdown || "").replace(/\r\n/g, "\n").split("\n");
+    const body = [];
+    const definitions = new Map();
+
+    for (let index = 0; index < lines.length; index += 1) {
+      const match = /^\[\^([^\]\s]+)\]:\s*(.*)$/.exec(lines[index]);
+      if (!match) {
+        body.push(lines[index]);
+        continue;
+      }
+
+      const id = match[1];
+      const content = [match[2]];
+      while (index + 1 < lines.length && (/^(?: {2,}|\t)/.test(lines[index + 1]) || !lines[index + 1].trim())) {
+        index += 1;
+        content.push(lines[index].replace(/^(?: {2,}|\t)/, ""));
+      }
+
+      definitions.set(id, content.join("\n").trim());
+    }
+
+    return {
+      body: body.join("\n"),
+      definitions,
+      usedIds: []
+    };
+  }
+
+  function renderFootnoteReference(id) {
+    const context = activeFootnoteContext;
+    if (!context?.definitions.has(id)) return escapeHtml(`[^${id}]`);
+    if (!context.usedIds.includes(id)) context.usedIds.push(id);
+    const number = context.usedIds.indexOf(id) + 1;
+    const anchorId = footnoteAnchorId(id);
+    return `<sup class="llmt-footnote-ref" id="${anchorId}-ref"><a href="#${anchorId}">${number}</a></sup>`;
+  }
+
+  function renderFootnotes(context) {
+    const ids = context.usedIds.filter((id) => context.definitions.has(id));
+    if (ids.length === 0) return "";
+    const items = ids
+      .map((id) => {
+        const anchorId = footnoteAnchorId(id);
+        return `<li id="${anchorId}">${renderInline(context.definitions.get(id))} <a class="llmt-footnote-backref" href="#${anchorId}-ref">&larrhk;</a></li>`;
+      })
+      .join("");
+    return `<section class="llmt-footnotes"><hr><ol>${items}</ol></section>`;
+  }
+
+  function footnoteAnchorId(id) {
+    return `llmt-footnote-${String(id).replace(/[^\w-]+/g, "-")}`;
   }
 
   function readMathBlock(lines, startIndex) {

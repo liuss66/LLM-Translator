@@ -34,9 +34,14 @@ const form = document.querySelector("#settings-form");
 const status = document.querySelector("#status");
 const presetSelect = document.querySelector("#preset-select");
 const presetName = document.querySelector("#preset-name");
+const importSettingsFile = document.querySelector("#import-settings-file");
+const providerTemplate = document.querySelector("#provider-template");
+const providerTemplateSummary = document.querySelector("#provider-template-summary");
 let saveTimer;
 let modelPresets = [];
 let currentPresetId = "";
+const EXPORT_VERSION = 1;
+const IMPORTABLE_SETTING_KEYS = Object.keys(DEFAULT_SETTINGS).filter((key) => key !== "apiKey");
 const providerDefaults = {
   openai: {
     apiBaseUrl: "https://api.openai.com/v1",
@@ -54,7 +59,80 @@ const providerDefaults = {
     visionModel: "local-model"
   }
 };
+const PROVIDER_TEMPLATES = [
+  {
+    id: "openai",
+    name: "OpenAI",
+    provider: "openai",
+    apiBaseUrl: "https://api.openai.com/v1",
+    textModel: "gpt-4o-mini",
+    visionModel: "gpt-4o-mini",
+    enableThinking: false,
+    thinkingRequestFields: ""
+  },
+  {
+    id: "anthropic",
+    name: "Anthropic",
+    provider: "anthropic",
+    apiBaseUrl: "https://api.anthropic.com/v1",
+    textModel: "claude-sonnet-4-20250514",
+    visionModel: "claude-sonnet-4-20250514",
+    enableThinking: false,
+    thinkingRequestFields: ""
+  },
+  {
+    id: "openrouter",
+    name: "OpenRouter",
+    provider: "openai",
+    apiBaseUrl: "https://openrouter.ai/api/v1",
+    textModel: "openai/gpt-4o-mini",
+    visionModel: "openai/gpt-4o-mini",
+    enableThinking: false,
+    thinkingRequestFields: ""
+  },
+  {
+    id: "deepseek",
+    name: "DeepSeek",
+    provider: "openai",
+    apiBaseUrl: "https://api.deepseek.com/v1",
+    textModel: "deepseek-chat",
+    visionModel: "deepseek-chat",
+    enableThinking: false,
+    thinkingRequestFields: ""
+  },
+  {
+    id: "siliconflow",
+    name: "SiliconFlow",
+    provider: "openai",
+    apiBaseUrl: "https://api.siliconflow.cn/v1",
+    textModel: "Qwen/Qwen2.5-7B-Instruct",
+    visionModel: "Qwen/Qwen2.5-VL-7B-Instruct",
+    enableThinking: false,
+    thinkingRequestFields: "enable_thinking\nchat_template_kwargs.enable_thinking"
+  },
+  {
+    id: "ollama",
+    name: "Ollama OpenAI-compatible",
+    provider: "openai",
+    apiBaseUrl: "http://127.0.0.1:11434/v1",
+    textModel: "qwen2.5",
+    visionModel: "llava",
+    enableThinking: false,
+    thinkingRequestFields: ""
+  },
+  {
+    id: "llamacpp",
+    name: "llama.cpp server",
+    provider: "llamacpp",
+    apiBaseUrl: "http://127.0.0.1:8080/v1",
+    textModel: "local-model",
+    visionModel: "local-model",
+    enableThinking: false,
+    thinkingRequestFields: "chat_template_kwargs.enable_thinking"
+  }
+];
 
+renderProviderTemplates();
 loadSettings();
 
 form.elements.provider.addEventListener("change", async () => {
@@ -108,6 +186,58 @@ document.querySelector("#open-shortcuts").addEventListener("click", () => {
   chrome.tabs.create({ url: "chrome://extensions/shortcuts" });
 });
 
+providerTemplate.addEventListener("change", () => {
+  const template = getSelectedProviderTemplate();
+  providerTemplateSummary.value = template
+    ? `${template.provider} · ${template.apiBaseUrl} · ${template.textModel}`
+    : "Provider, base URL, models, thinking fields";
+});
+
+document.querySelector("#apply-provider-template").addEventListener("click", async () => {
+  const template = getSelectedProviderTemplate();
+  if (!template) {
+    status.textContent = "Choose a provider template first.";
+    return;
+  }
+  currentPresetId = "";
+  applyProviderTemplate(template);
+  await saveSettings(`${template.name} template applied. API Key was unchanged.`);
+});
+
+document.querySelector("#export-settings").addEventListener("click", () => {
+  exportSettings();
+});
+
+document.querySelector("#import-settings").addEventListener("click", () => {
+  importSettingsFile.value = "";
+  importSettingsFile.click();
+});
+
+importSettingsFile.addEventListener("change", async () => {
+  const [file] = importSettingsFile.files || [];
+  if (!file) return;
+  try {
+    const imported = JSON.parse(await file.text());
+    const settings = sanitizeImportedSettings(imported);
+    await applyImportedSettings(settings);
+    status.textContent = "Settings imported. API Key was unchanged.";
+  } catch (error) {
+    status.textContent = error.message || "Import failed.";
+  }
+});
+
+document.querySelector("#restore-defaults").addEventListener("click", async () => {
+  if (!confirm("Restore all settings to defaults? API Key and presets will be cleared.")) return;
+  modelPresets = [];
+  currentPresetId = "";
+  await chrome.storage.sync.set({ ...DEFAULT_SETTINGS });
+  renderPresetOptions();
+  presetSelect.value = "";
+  presetName.value = "";
+  fillForm(DEFAULT_SETTINGS);
+  status.textContent = "Defaults restored.";
+});
+
 presetSelect.addEventListener("change", () => {
   const preset = modelPresets.find((item) => item.id === presetSelect.value);
   presetName.value = preset?.name || "";
@@ -145,7 +275,7 @@ document.querySelector("#load-preset").addEventListener("click", async () => {
   }
   fillForm({
     ...readFormSettings(),
-    ...pickModelSettings(preset),
+    ...pickPresetSettingsForLoad(preset),
     currentPresetId: preset.id,
     modelPresets
   });
@@ -240,10 +370,153 @@ function renderPresetOptions() {
   });
 }
 
+function renderProviderTemplates() {
+  providerTemplate.innerHTML = '<option value="">Choose a provider template</option>';
+  PROVIDER_TEMPLATES.forEach((template) => {
+    const option = document.createElement("option");
+    option.value = template.id;
+    option.textContent = template.name;
+    providerTemplate.append(option);
+  });
+}
+
+function getSelectedProviderTemplate() {
+  return PROVIDER_TEMPLATES.find((template) => template.id === providerTemplate.value);
+}
+
+function applyProviderTemplate(template) {
+  form.elements.provider.value = template.provider;
+  form.elements.apiBaseUrl.value = template.apiBaseUrl;
+  form.elements.textModel.value = template.textModel;
+  form.elements.visionModel.value = template.visionModel;
+  form.elements.enableThinking.checked = Boolean(template.enableThinking);
+  form.elements.thinkingRequestFields.value = template.thinkingRequestFields || "";
+}
+
+function exportSettings() {
+  const settings = readFormSettings();
+  const exportData = {
+    format: "llm-translator-settings",
+    version: EXPORT_VERSION,
+    exportedAt: new Date().toISOString(),
+    settings: pickExportSettings(settings)
+  };
+  const blob = new Blob([`${JSON.stringify(exportData, null, 2)}\n`], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `llm-translator-settings-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  status.textContent = "Settings exported without API Key.";
+}
+
+function pickExportSettings(settings) {
+  return Object.fromEntries(
+    IMPORTABLE_SETTING_KEYS.map((key) => [
+      key,
+      key === "modelPresets" ? stripPresetSecrets(settings[key]) : cloneSettingValue(settings[key])
+    ])
+  );
+}
+
+function cloneSettingValue(value) {
+  return value === undefined ? value : JSON.parse(JSON.stringify(value));
+}
+
+function sanitizeImportedSettings(imported) {
+  const source = imported?.settings && typeof imported.settings === "object" ? imported.settings : imported;
+  if (!source || typeof source !== "object" || Array.isArray(source)) {
+    throw new Error("Import file must contain a settings object.");
+  }
+
+  const next = {};
+  for (const key of IMPORTABLE_SETTING_KEYS) {
+    if (source[key] !== undefined) {
+      next[key] = sanitizeSettingValue(key, source[key]);
+    }
+  }
+  if (Object.keys(next).length === 0) {
+    throw new Error("Import file did not contain supported settings.");
+  }
+  return next;
+}
+
+function sanitizeSettingValue(key, value) {
+  if (key === "provider") {
+    return ["openai", "anthropic", "llamacpp"].includes(value) ? value : DEFAULT_SETTINGS.provider;
+  }
+  if (key === "showOcrResult" || key === "showInputImage" || key === "compressInputImage" || key === "cropPageMargins" || key === "enableThinking") {
+    return Boolean(value);
+  }
+  if (key === "imageMaxEdge") {
+    return clampInteger(value, 320, 4096, DEFAULT_SETTINGS.imageMaxEdge);
+  }
+  if (key === "imageJpegQuality") {
+    return clampNumber(value, 0.5, 1, DEFAULT_SETTINGS.imageJpegQuality);
+  }
+  if (key === "modelPresets") {
+    return sanitizeModelPresets(value);
+  }
+  if (key === "currentPresetId") {
+    return String(value || "");
+  }
+  return String(value ?? DEFAULT_SETTINGS[key] ?? "").trim();
+}
+
+function sanitizeModelPresets(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item) => item && typeof item === "object")
+    .map((item) => ({
+      id: String(item.id || createPresetId()),
+      name: String(item.name || item.textModel || "Unnamed").trim() || "Unnamed",
+      ...pickPresetSettingsWithoutApiKey(item)
+    }));
+}
+
+async function applyImportedSettings(settings) {
+  const existing = readFormSettings();
+  const next = {
+    ...existing,
+    ...settings,
+    apiKey: existing.apiKey
+  };
+  modelPresets = Array.isArray(next.modelPresets) ? next.modelPresets : [];
+  currentPresetId = modelPresets.some((item) => item.id === next.currentPresetId) ? next.currentPresetId : "";
+  next.modelPresets = modelPresets;
+  next.currentPresetId = currentPresetId;
+  await chrome.storage.sync.set(next);
+  renderPresetOptions();
+  presetSelect.value = currentPresetId;
+  presetName.value = modelPresets.find((item) => item.id === currentPresetId)?.name || "";
+  fillForm(next);
+}
+
 function pickModelSettings(source) {
   return Object.fromEntries(
     MODEL_SETTING_KEYS.map((key) => [key, source[key] ?? DEFAULT_SETTINGS[key]])
   );
+}
+
+function pickPresetSettingsForLoad(preset) {
+  const settings = pickModelSettings(preset);
+  if (!preset.apiKey) {
+    delete settings.apiKey;
+  }
+  return settings;
+}
+
+function pickPresetSettingsWithoutApiKey(source) {
+  return Object.fromEntries(
+    MODEL_SETTING_KEYS.filter((key) => key !== "apiKey").map((key) => [key, source[key] ?? DEFAULT_SETTINGS[key]])
+  );
+}
+
+function stripPresetSecrets(presets) {
+  return sanitizeModelPresets(presets);
 }
 
 function createPresetId() {

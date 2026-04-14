@@ -39,6 +39,10 @@
 
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
+      if (document.querySelector(".llmt-image-preview")) {
+        closeImagePreview();
+        return;
+      }
       removeSelectionLayer();
       hideResultPanel({ dismissCurrentRun: true });
     }
@@ -91,6 +95,8 @@
       const image = document.createElement("img");
       image.src = payload.imageUrl;
       image.alt = "Selected region";
+      image.title = "Click to preview";
+      image.addEventListener("click", () => openImagePreview(payload.imageUrl, payload.originalImageUrl));
       imageWrap.append(image);
     }
 
@@ -109,7 +115,7 @@
     }
     if (payload.imageInfo?.cropInfo?.cropped) {
       const crop = payload.imageInfo.cropInfo;
-      parts.push(`裁剪 ${crop.originalWidth}x${crop.originalHeight} -> ${crop.width}x${crop.height}`);
+      parts.push(`裁剪 ${crop.originalWidth}x${crop.originalHeight} -> ${crop.width}x${crop.height}${formatCropMargins(crop)}`);
     } else if (payload.imageInfo?.cropInfo?.reason) {
       parts.push(`未裁剪: ${payload.imageInfo.cropInfo.reason}`);
     }
@@ -120,6 +126,13 @@
     const totalSeconds = Math.max(0, milliseconds / 1000);
     if (totalSeconds < 10) return `${totalSeconds.toFixed(1)}s`;
     return `${Math.round(totalSeconds)}s`;
+  }
+
+  function formatCropMargins(cropInfo) {
+    const left = Number(cropInfo.left || 0);
+    const right = Number(cropInfo.right || 0);
+    if (left <= 0 && right <= 0) return "";
+    return ` (L${left}px R${right}px)`;
   }
 
   function hideResultPanel({ dismissCurrentRun = false } = {}) {
@@ -207,5 +220,51 @@
       selectionLayer.remove();
       selectionLayer = null;
     }
+  }
+
+  function openImagePreview(imageUrl, originalImageUrl = "") {
+    if (!imageUrl) return;
+    closeImagePreview();
+
+    const preview = document.createElement("div");
+    preview.className = "llmt-image-preview";
+    preview.setAttribute("role", "dialog");
+    preview.setAttribute("aria-modal", "true");
+    preview.setAttribute("aria-label", "Input image preview");
+    const hasComparison = Boolean(originalImageUrl && originalImageUrl !== imageUrl);
+    preview.innerHTML = hasComparison
+      ? `
+        <button class="llmt-image-preview__close" type="button" aria-label="Close image preview">×</button>
+        <div class="llmt-image-preview__grid">
+          <figure>
+            <figcaption>Before crop</figcaption>
+            <img data-role="original" alt="Original page screenshot">
+          </figure>
+          <figure>
+            <figcaption>Input image</figcaption>
+            <img data-role="input" alt="Input image preview">
+          </figure>
+        </div>
+      `
+      : `
+        <button class="llmt-image-preview__close" type="button" aria-label="Close image preview">×</button>
+        <img data-role="input" alt="Input image preview">
+      `;
+    preview.querySelector('[data-role="input"]').src = imageUrl;
+    if (hasComparison) {
+      preview.querySelector('[data-role="original"]').src = originalImageUrl;
+    }
+    preview.addEventListener("click", closeImagePreview);
+    preview.querySelectorAll("img").forEach((image) => {
+      image.addEventListener("click", (event) => event.stopPropagation());
+    });
+    preview.querySelector(".llmt-image-preview__grid")?.addEventListener("click", (event) => event.stopPropagation());
+    preview.querySelector(".llmt-image-preview__close").addEventListener("click", closeImagePreview);
+    document.documentElement.append(preview);
+    preview.querySelector(".llmt-image-preview__close").focus();
+  }
+
+  function closeImagePreview() {
+    document.querySelector(".llmt-image-preview")?.remove();
   }
 })();

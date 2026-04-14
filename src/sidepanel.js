@@ -7,6 +7,7 @@ const chatSection = document.querySelector(".chat");
 const chatLog = document.querySelector("#chat-log");
 const chatForm = document.querySelector("#chat-form");
 const chatInput = document.querySelector("#chat-input");
+const stopAction = document.querySelector("#stop-action");
 const configPanel = document.querySelector(".config-panel");
 const toggleConfig = document.querySelector("#toggle-config");
 const showOcrResult = document.querySelector("#show-ocr-result");
@@ -71,6 +72,10 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   }
 });
 
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") closeImagePreview();
+});
+
 document.querySelector("#translate-selection").addEventListener("click", async () => {
   status.textContent = "Reading selected text...";
   try {
@@ -96,6 +101,12 @@ document.querySelector("#translate-page").addEventListener("click", async () => 
 
 copyTranslation.addEventListener("click", async () => {
   await copyText(currentResult?.translation || translation.innerText || "", copyTranslation);
+});
+
+stopAction.addEventListener("click", async () => {
+  stopAction.disabled = true;
+  status.textContent = "Cancelling...";
+  await chrome.runtime.sendMessage({ type: "cancel-current-request" }).catch(() => {});
 });
 
 document.querySelector("#open-options").addEventListener("click", () => {
@@ -200,6 +211,7 @@ chatForm.addEventListener("submit", async (event) => {
   appendChatMessage("user", question);
   const assistantMessage = appendChatMessage("assistant", "");
   activeChatStreams.set(requestId, assistantMessage);
+  updateStopVisibility();
   status.textContent = "Asking model...";
 
   try {
@@ -217,6 +229,7 @@ chatForm.addEventListener("submit", async (event) => {
     setChatMessageContent(assistantMessage, status.textContent);
   } finally {
     activeChatStreams.delete(requestId);
+    updateStopVisibility();
   }
 });
 
@@ -335,12 +348,15 @@ function setConfigCollapsed(collapsed) {
 
 async function sendAction(message, pendingText) {
   status.textContent = pendingText;
+  updateStopVisibility(true);
   try {
     const response = await chrome.runtime.sendMessage(message);
     if (!response?.ok) throw new Error(response?.error || "Action failed.");
   } catch (error) {
     status.textContent = error.message || "Action failed.";
     return;
+  } finally {
+    updateStopVisibility(false);
   }
   setTimeout(() => {
     status.textContent = stickyStatus;
@@ -355,6 +371,7 @@ function renderResult(result) {
   renderResultStatus(result);
   copyTranslation.hidden = Boolean(result?.isStreaming || !result?.translation);
   translation.innerHTML = globalThis.LLMTranslatorMarkdown.renderMarkdown(result?.translation || "");
+  updateStopVisibility();
 
   image.innerHTML = "";
   hasScreenshotContext = Boolean(result?.imageUrl);
@@ -364,6 +381,8 @@ function renderResult(result) {
     const img = document.createElement("img");
     img.src = result.imageUrl;
     img.alt = "Selected region";
+    img.title = "Click to preview";
+    img.addEventListener("click", () => openImagePreview(result.imageUrl, result.originalImageUrl));
     image.append(img);
   }
 
@@ -433,7 +452,60 @@ function formatImageInfo(info) {
 function formatCropInfo(cropInfo) {
   if (!cropInfo) return "";
   if (!cropInfo.cropped) return cropInfo.reason ? ` · 未裁剪: ${cropInfo.reason}` : "";
-  return ` · 裁剪 ${cropInfo.originalWidth}x${cropInfo.originalHeight} -> ${cropInfo.width}x${cropInfo.height}`;
+  return ` · 裁剪 ${cropInfo.originalWidth}x${cropInfo.originalHeight} -> ${cropInfo.width}x${cropInfo.height}${formatCropMargins(cropInfo)}`;
+}
+
+function formatCropMargins(cropInfo) {
+  const left = Number(cropInfo.left || 0);
+  const right = Number(cropInfo.right || 0);
+  if (left <= 0 && right <= 0) return "";
+  return ` (L${left}px R${right}px)`;
+}
+
+function openImagePreview(imageUrl, originalImageUrl = "") {
+  if (!imageUrl) return;
+  closeImagePreview();
+
+  const preview = document.createElement("div");
+  preview.className = "image-preview";
+  preview.setAttribute("role", "dialog");
+  preview.setAttribute("aria-modal", "true");
+  preview.setAttribute("aria-label", "Input image preview");
+  const hasComparison = Boolean(originalImageUrl && originalImageUrl !== imageUrl);
+  preview.innerHTML = hasComparison
+    ? `
+      <button class="image-preview__close" type="button" aria-label="Close image preview">×</button>
+      <div class="image-preview__grid">
+        <figure>
+          <figcaption>Before crop</figcaption>
+          <img data-role="original" alt="Original page screenshot">
+        </figure>
+        <figure>
+          <figcaption>Input image</figcaption>
+          <img data-role="input" alt="Input image preview">
+        </figure>
+      </div>
+    `
+    : `
+      <button class="image-preview__close" type="button" aria-label="Close image preview">×</button>
+      <img data-role="input" alt="Input image preview">
+    `;
+  preview.querySelector('[data-role="input"]').src = imageUrl;
+  if (hasComparison) {
+    preview.querySelector('[data-role="original"]').src = originalImageUrl;
+  }
+  preview.addEventListener("click", closeImagePreview);
+  preview.querySelectorAll("img").forEach((img) => {
+    img.addEventListener("click", (event) => event.stopPropagation());
+  });
+  preview.querySelector(".image-preview__grid")?.addEventListener("click", (event) => event.stopPropagation());
+  preview.querySelector(".image-preview__close").addEventListener("click", closeImagePreview);
+  document.body.append(preview);
+  preview.querySelector(".image-preview__close").focus();
+}
+
+function closeImagePreview() {
+  document.querySelector(".image-preview")?.remove();
 }
 
 function setStatus(message) {
@@ -468,17 +540,27 @@ function appendChatMessage(role, content) {
 function updateChatStream(message) {
   const element = activeChatStreams.get(message.requestId);
   if (!element) return;
-  setChatMessageContent(element, message.answer || "");
+  setChatMessageContent(element, message.answer || "", { showCopy: false });
   if (message.startedAt && message.elapsedMs === undefined) {
     status.textContent = `计时 ${formatDuration(Date.now() - new Date(message.startedAt).getTime())} · 流式输出中`;
   }
+  updateStopVisibility();
 }
 
-function setChatMessageContent(message, content) {
+function updateStopVisibility(forceVisible) {
+  const visible =
+    forceVisible === true ||
+    Boolean(currentResult?.isStreaming) ||
+    activeChatStreams.size > 0;
+  stopAction.hidden = !visible;
+  stopAction.disabled = false;
+}
+
+function setChatMessageContent(message, content, { showCopy = true } = {}) {
   const contentElement = message.querySelector(".chat-message__content");
   contentElement.innerHTML = globalThis.LLMTranslatorMarkdown.renderMarkdown(content || "");
   message.dataset.copyText = content || "";
-  message.querySelector(".copy-button").hidden = !content;
+  message.querySelector(".copy-button").hidden = !showCopy || !content;
   const lastHistoryItem = chatHistory[chatHistory.length - 1];
   if (lastHistoryItem?.role === "assistant") {
     lastHistoryItem.content = content || "";

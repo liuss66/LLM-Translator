@@ -33,6 +33,37 @@
           </div>
         </section>
 
+        <section class="preset-panel">
+          <h2>Config backup</h2>
+          <p class="section-note">导出和导入不会包含或覆盖 API Key。</p>
+          <div class="preset-actions">
+            <button type="button" id="export-settings" class="secondary">Export settings</button>
+            <button type="button" id="import-settings" class="secondary">Import settings</button>
+            <button type="button" id="restore-defaults" class="secondary danger">Restore defaults</button>
+          </div>
+          <input id="import-settings-file" type="file" accept="application/json,.json" hidden>
+        </section>
+
+        <section class="preset-panel">
+          <h2>Provider templates</h2>
+          <p class="section-note">模板只填写公开配置，不会修改 API Key。</p>
+          <div class="preset-grid">
+            <label>
+              Template
+              <select id="provider-template">
+                <option value="">Choose a provider template</option>
+              </select>
+            </label>
+            <label>
+              Applies
+              <input id="provider-template-summary" type="text" readonly value="Provider, base URL, models, thinking fields">
+            </label>
+          </div>
+          <div class="preset-actions">
+            <button type="button" id="apply-provider-template" class="secondary">Apply template</button>
+          </div>
+        </section>
+
         <label>
           Provider
           <select name="provider">

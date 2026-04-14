@@ -35,6 +35,7 @@ const MENU_TRANSLATE_SCREENSHOT = "translate-screenshot-region";
 const MENU_TRANSLATE_PAGE = "translate-current-page";
 let lastResult = null;
 const sidePanelPorts = new Set();
+const activeModelControllers = new Set();
 
 chrome.runtime.onInstalled.addListener(async () => {
   const existing = await chrome.storage.sync.get(Object.keys(DEFAULT_SETTINGS));
@@ -124,7 +125,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .catch((error) => {
         console.error(error);
         chrome.storage.session.set({ sidePanelOpen: false });
-        sendResponse({ ok: false, error: error.message || "Failed to open side panel." });
+        sendResponse({ ok: false, error: userFacingError(error) || "无法打开侧边栏。" });
       });
     return true;
   }
@@ -138,13 +139,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           await showResult(sender.tab.id, {
             title: "Translation failed",
             source: "",
-            translation: error.message || "Unexpected error"
+            translation: userFacingError(error) || "发生未知错误。"
           });
         } catch (displayError) {
           console.error(displayError);
         }
       }
-      sendResponse({ ok: false, error: error.message || "Unexpected error" });
+      sendResponse({ ok: false, error: userFacingError(error) || "发生未知错误。" });
     });
   return true;
 });
@@ -203,6 +204,11 @@ async function handleMessage(message, sender) {
     if (message.tabId) {
       await hideFloatingPanel(message.tabId);
     }
+    return { ok: true };
+  }
+
+  if (message?.type === "cancel-current-request") {
+    cancelActiveModelRequests();
     return { ok: true };
   }
 
@@ -305,7 +311,7 @@ async function runForTab(tabId, task) {
     await showResult(tabId, {
       title: "Translation failed",
       source: "",
-      translation: error.message || "Unexpected error"
+      translation: userFacingError(error) || "发生未知错误。"
     });
   }
 }
@@ -394,7 +400,7 @@ async function translateSelection(tabId, rawText) {
     await showResult(tabId, {
       title: "No text selected",
       source: "",
-      translation: "Select text in the page or PDF first, then run translation."
+      translation: "未检测到选中文本。请先在网页或 PDF 中选中文字；如果 PDF 选择失败，改用 Screenshot 或 Page 模式。"
     });
     return;
   }
@@ -477,7 +483,8 @@ async function translateCurrentPage(tabId, windowId) {
     source: "Current visible page",
     initialTitle: "Recognizing current page...",
     startedAt,
-    cropInfo: pageImage.info
+    cropInfo: pageImage.info,
+    originalImageUrl: pageImage.info?.cropped ? dataUrl : ""
   });
 }
 
@@ -493,6 +500,7 @@ async function translateScreenshotImage(tabId, imageDataUrl, options) {
     source: options.source,
     translation: "Waiting for model response.",
     imageUrl: preparedImage.dataUrl,
+    originalImageUrl: settings.showInputImage ? options.originalImageUrl : "",
     showInputImage: settings.showInputImage,
     imageInfo,
     startedAt: options.startedAt,
@@ -504,6 +512,7 @@ async function translateScreenshotImage(tabId, imageDataUrl, options) {
       source: options.source,
       translation: removeReasoningBlocks(partial, settings),
       imageUrl: preparedImage.dataUrl,
+      originalImageUrl: settings.showInputImage ? options.originalImageUrl : "",
       showInputImage: settings.showInputImage,
       imageInfo,
       startedAt: options.startedAt,
@@ -516,6 +525,7 @@ async function translateScreenshotImage(tabId, imageDataUrl, options) {
     source: options.source,
     translation: removeReasoningBlocks(translation, settings),
     imageUrl: preparedImage.dataUrl,
+    originalImageUrl: settings.showInputImage ? options.originalImageUrl : "",
     showInputImage: settings.showInputImage,
     imageInfo,
     startedAt: options.startedAt,
@@ -608,9 +618,13 @@ async function switchModelPreset(presetId) {
     throw new Error("Model preset was not found.");
   }
 
+  const presetSettings = pickModelSettings(preset);
+  if (!preset.apiKey) {
+    delete presetSettings.apiKey;
+  }
   const nextSettings = {
     ...pickModelSettings(settings),
-    ...pickModelSettings(preset)
+    ...presetSettings
   };
   await testModel(nextSettings);
   await chrome.storage.sync.set({
@@ -755,6 +769,8 @@ async function callModel(settings, model, messages, options = {}) {
 }
 
 async function callOpenAIChatCompletions(settings, model, messages, options = {}) {
+  const controller = new AbortController();
+  activeModelControllers.add(controller);
   const headers = {
     "Content-Type": "application/json"
   };
@@ -772,80 +788,92 @@ async function callOpenAIChatCompletions(settings, model, messages, options = {}
   }
   const appliedThinkingFields = applyThinkingSettings(settings, body);
 
-  const response = await fetch(`${settings.apiBaseUrl}/chat/completions`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body)
-  });
+  try {
+    const response = await fetch(`${settings.apiBaseUrl}/chat/completions`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
 
-  if (!response.ok) {
-    const detail = await response.text();
-    if (appliedThinkingFields && shouldRetryWithoutThinkingFields(response.status, detail)) {
-      return callOpenAIChatCompletions(
-        { ...settings, thinkingRequestFields: "" },
-        model,
-        messages,
-        options
-      );
+    if (!response.ok) {
+      const detail = await response.text();
+      if (appliedThinkingFields && shouldRetryWithoutThinkingFields(response.status, detail)) {
+        return callOpenAIChatCompletions(
+          { ...settings, thinkingRequestFields: "" },
+          model,
+          messages,
+          options
+        );
+      }
+      throw new Error(`Model request failed (${response.status}): ${detail}`);
     }
-    throw new Error(`Model request failed (${response.status}): ${detail}`);
-  }
 
-  if (options.stream) {
-    return readOpenAIStream(response, options.onDelta);
-  }
+    if (options.stream) {
+      return readOpenAIStream(response, options.onDelta);
+    }
 
-  const data = await response.json();
-  const content = data?.choices?.[0]?.message?.content;
-  if (!content) {
-    throw new Error("Model response did not contain translated content.");
-  }
+    const data = await response.json();
+    const content = data?.choices?.[0]?.message?.content;
+    if (!content) {
+      throw new Error("Model response did not contain translated content.");
+    }
 
-  return Array.isArray(content)
-    ? content.map((part) => part.text || "").join("").trim()
-    : String(content).trim();
+    return Array.isArray(content)
+      ? content.map((part) => part.text || "").join("").trim()
+      : String(content).trim();
+  } finally {
+    activeModelControllers.delete(controller);
+  }
 }
 
 async function callAnthropicMessages(settings, model, messages, options = {}) {
+  const controller = new AbortController();
+  activeModelControllers.add(controller);
   const { system, anthropicMessages } = toAnthropicMessages(withThinkingInstruction(settings, messages));
-  const response = await fetch(`${settings.apiBaseUrl}/messages`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": settings.apiKey,
-      "anthropic-version": "2023-06-01",
-      "anthropic-dangerous-direct-browser-access": "true"
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: 2048,
-      temperature: 0.2,
-      stream: Boolean(options.stream),
-      system,
-      messages: anthropicMessages
-    })
-  });
+  try {
+    const response = await fetch(`${settings.apiBaseUrl}/messages`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": settings.apiKey,
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true"
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: 2048,
+        temperature: 0.2,
+        stream: Boolean(options.stream),
+        system,
+        messages: anthropicMessages
+      }),
+      signal: controller.signal
+    });
 
-  if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(`Anthropic request failed (${response.status}): ${detail}`);
+    if (!response.ok) {
+      const detail = await response.text();
+      throw new Error(`Anthropic request failed (${response.status}): ${detail}`);
+    }
+
+    if (options.stream) {
+      return readAnthropicStream(response, options.onDelta);
+    }
+
+    const data = await response.json();
+    const content = data?.content;
+    if (!Array.isArray(content)) {
+      throw new Error("Anthropic response did not contain translated content.");
+    }
+
+    return content
+      .filter((part) => part.type === "text")
+      .map((part) => part.text || "")
+      .join("")
+      .trim();
+  } finally {
+    activeModelControllers.delete(controller);
   }
-
-  if (options.stream) {
-    return readAnthropicStream(response, options.onDelta);
-  }
-
-  const data = await response.json();
-  const content = data?.content;
-  if (!Array.isArray(content)) {
-    throw new Error("Anthropic response did not contain translated content.");
-  }
-
-  return content
-    .filter((part) => part.type === "text")
-    .map((part) => part.text || "")
-    .join("")
-    .trim();
 }
 
 async function readOpenAIStream(response, onDelta) {
@@ -967,6 +995,160 @@ function parseThinkingRequestFields(rawFields) {
 function shouldRetryWithoutThinkingFields(status, detail) {
   if (![400, 422].includes(status)) return false;
   return /unknown|unrecognized|unsupported|extra|invalid|not permitted|unexpected/i.test(detail || "");
+}
+
+function userFacingError(error) {
+  const message = String(error?.message || error || "").trim();
+  if (!message) return "";
+
+  if (error?.name === "AbortError" || /abort|aborted|signal is aborted/i.test(message)) {
+    return "已取消当前请求。";
+  }
+
+  const modelError = parseModelError(message);
+  if (modelError) return modelError;
+
+  if (/api key is missing/i.test(message)) {
+    return "API Key 缺失。请打开 Options，填写对应服务商的 API Key 后再试。";
+  }
+
+  if (/failed to fetch|networkerror|load failed|network request failed/i.test(message)) {
+    return "网络请求失败。请检查 API Base URL、网络连接、代理设置，或确认该服务允许浏览器扩展直接访问。";
+  }
+
+  if (/chrome side panel api is not available/i.test(message)) {
+    return "当前浏览器不支持 Chrome Side Panel API。请使用较新的 Chrome/Edge，或改用悬浮窗模式。";
+  }
+
+  if (/sidePanel\.open\(\) may only be called in response to a user gesture/i.test(message)) {
+    return "浏览器要求侧边栏必须由点击或快捷键直接打开。请重新点击扩展里的 Side panel 按钮。";
+  }
+
+  if (/no window with id:\s*-?\d+/i.test(message)) {
+    return "无法定位当前浏览器窗口。请重新点击页面或重新打开扩展弹窗后再试。";
+  }
+
+  if (/no active tab found/i.test(message)) {
+    return "未找到当前活动标签页。请切换到要翻译的页面后再试。";
+  }
+
+  if (/no active window found/i.test(message)) {
+    return "未找到当前浏览器窗口。请重新聚焦浏览器窗口后再试。";
+  }
+
+  if (/cannot access|cannot be scripted|extension context invalidated|receiving end does not exist/i.test(message)) {
+    return "当前页面暂时无法注入扩展脚本。请刷新页面后再试；Chrome 内置页面和部分商店页面不允许扩展运行。";
+  }
+
+  if (/selected region is too small/i.test(message)) {
+    return "截图区域太小。请重新选择更大的区域。";
+  }
+
+  if (/screenshot data url is invalid|invalid image|failed to execute 'createImageBitmap'|image/i.test(message)) {
+    return "截图图片处理失败。请重新截图；如果页面很大，建议开启压缩或降低 Max Edge。";
+  }
+
+  if (/no screenshot translation is available/i.test(message)) {
+    return "当前没有可追问的截图翻译结果。请先运行 Screenshot 或 Page 翻译。";
+  }
+
+  if (/question is empty/i.test(message)) {
+    return "问题为空。请输入要追问的内容。";
+  }
+
+  if (/model response did not contain translated content/i.test(message)) {
+    return "模型返回为空。请检查模型名称是否正确，或换一个模型重试。";
+  }
+
+  if (/streaming response is not readable/i.test(message)) {
+    return "当前服务不支持可读取的流式响应。请换用支持流式输出的模型服务，或稍后重试。";
+  }
+
+  return message;
+}
+
+function parseModelError(message) {
+  const match = /(?:Model|Anthropic) request failed \((\d{3})\):\s*([\s\S]*)/i.exec(message);
+  if (!match) return "";
+
+  const status = Number.parseInt(match[1], 10);
+  const detail = summarizeErrorDetail(match[2]);
+
+  if (status === 400) {
+    if (/vision|image|modal|multimodal|content type|image_url/i.test(detail)) {
+      return `模型请求失败（400）：当前模型可能不支持图片输入。请在 Options 中切换 Vision model，或检查 provider 是否兼容。${detail ? `\n\n服务返回：${detail}` : ""}`;
+    }
+    if (/context|token|too long|max/i.test(detail)) {
+      return `模型请求失败（400）：输入内容可能过长。请缩小截图区域、开启图片压缩，或降低 Max Edge。${detail ? `\n\n服务返回：${detail}` : ""}`;
+    }
+    return `模型请求参数无效（400）。请检查 API Base URL、模型名、thinking 字段配置和 provider 类型。${detail ? `\n\n服务返回：${detail}` : ""}`;
+  }
+
+  if (status === 401) {
+    return `认证失败（401）。请检查 API Key 是否正确，或该 Key 是否属于当前 API Base URL。${detail ? `\n\n服务返回：${detail}` : ""}`;
+  }
+
+  if (status === 403) {
+    return `权限不足（403）。请确认账号有权限调用该模型，API Key 未被禁用，且服务商允许浏览器扩展访问。${detail ? `\n\n服务返回：${detail}` : ""}`;
+  }
+
+  if (status === 404) {
+    return `模型或接口不存在（404）。请检查 API Base URL 和模型名称是否正确。${detail ? `\n\n服务返回：${detail}` : ""}`;
+  }
+
+  if (status === 408 || status === 504) {
+    return `模型请求超时（${status}）。请稍后重试，或缩小输入内容/截图区域。${detail ? `\n\n服务返回：${detail}` : ""}`;
+  }
+
+  if (status === 413) {
+    return `请求体过大（413）。请开启图片压缩、降低 Max Edge，或缩小截图区域。${detail ? `\n\n服务返回：${detail}` : ""}`;
+  }
+
+  if (status === 422) {
+    return `模型服务无法处理该请求（422）。请检查模型名、thinking 字段和输入格式是否符合该服务商要求。${detail ? `\n\n服务返回：${detail}` : ""}`;
+  }
+
+  if (status === 429) {
+    return `请求过于频繁或额度不足（429）。请稍后重试，或检查服务商额度和限流策略。${detail ? `\n\n服务返回：${detail}` : ""}`;
+  }
+
+  if (status >= 500) {
+    return `模型服务暂时异常（${status}）。请稍后重试；如果持续出现，请检查 API Base URL 或切换服务商。${detail ? `\n\n服务返回：${detail}` : ""}`;
+  }
+
+  return `模型请求失败（${status}）。${detail ? `服务返回：${detail}` : "请检查模型服务配置。"}`;
+}
+
+function summarizeErrorDetail(detail) {
+  const text = extractErrorText(detail).replace(/\s+/g, " ").trim();
+  return text.length > 360 ? `${text.slice(0, 360)}...` : text;
+}
+
+function extractErrorText(detail) {
+  const raw = String(detail || "").trim();
+  if (!raw) return "";
+  try {
+    const parsed = JSON.parse(raw);
+    return findErrorText(parsed) || raw;
+  } catch {
+    return raw;
+  }
+}
+
+function findErrorText(value) {
+  if (!value || typeof value !== "object") return typeof value === "string" ? value : "";
+  if (typeof value.message === "string") return value.message;
+  if (typeof value.error === "string") return value.error;
+  if (value.error) return findErrorText(value.error);
+  if (typeof value.detail === "string") return value.detail;
+  if (Array.isArray(value.details)) return value.details.map(findErrorText).filter(Boolean).join("; ");
+  return "";
+}
+
+function cancelActiveModelRequests() {
+  for (const controller of activeModelControllers) {
+    controller.abort();
+  }
 }
 
 function setNestedRequestField(target, fieldPath, value) {

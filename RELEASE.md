@@ -1,12 +1,15 @@
-# Release v0.3.6
+# Release v0.4.0
 
-## Improvements
+## Major Updates
 
-- Added local syntax highlighting for fenced code blocks without external CDN dependencies.
-- Added language labels for highlighted code blocks.
-- Supports JavaScript, TypeScript, Python, JSON, CSS, HTML/XML/SVG, Bash, C, and C++ style code blocks.
-- Keeps code content HTML-escaped while applying token colors.
+- Added Markdown/GFM regression tests and expanded rendering support for blockquotes, bare links, footnotes, task lists, tables, separators, superscript/subscript, formulas, and highlighted fenced code blocks.
+- Added screenshot input preview: click the input image to enlarge it, and compare the original page screenshot with the cropped input image when current-page crop succeeds.
+- Added Stop support for in-progress streaming requests.
+- Added provider templates plus settings import, export, and restore-defaults controls.
+- Improved user-facing error messages for API, network, side panel, screenshot, empty input, and cancellation cases.
+- Added extension packaging and release scripts. Store upload packages include only `manifest.json` and `src/`, excluding Git and development files.
 
 ## Notes
 
-- Reload the extension after updating so the refreshed Markdown renderer and code styles are applied.
+- Reload the extension after updating.
+- The store upload zip can be generated with `npm run package`.

@@ -1,0 +1,8 @@
+{
+  "name": "llm-translator-extension",
+  "private": true,
+  "scripts": {
+    "package": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-extension.ps1",
+    "test": "node tests/markdown-render.test.js"
+  }
+}

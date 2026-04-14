@@ -2,6 +2,15 @@
 
 一个无构建步骤的 Chrome Manifest V3 扩展，用大模型完成网页/PDF 文本翻译、截图 OCR 翻译和当前页识别翻译。
 
+## v0.4.0 更新亮点
+
+- 增强 Markdown/GFM 渲染，补充 blockquote、裸链接、脚注和更完整的回归测试。
+- 优化截图输入预览，点击输入图可放大；当前页裁剪成功时可对比裁剪前和实际输入图。
+- 增加 Stop 按钮，支持取消正在进行的流式请求。
+- 增加配置导入、导出、恢复默认设置和常见 Provider 模板。
+- 改进常见错误提示，减少直接暴露长 JSON 或底层异常。
+- 增加商城上传包和 release 脚本，发布包会排除 `.git`、docs、tests、scripts 等开发文件。
+
 ## 功能
 
 - 右键翻译选中的文本。
@@ -46,6 +55,53 @@
 - `Crop`：当前页识别时裁掉阅读器左右空白。
 - `Compress`：发送图片前按 `Edge` 和 `Quality` 参数压缩。
 
+## 配置建议
+
+- 文本模型可填写便宜、响应快的模型，用于网页文字和 PDF 可选文字翻译。
+- Vision 模型需要支持图片输入，用于 Screenshot 和 Page 模式。
+- OpenAI-compatible 服务通常填写 `/v1` 结尾的 Base URL。
+- Anthropic 服务使用 `https://api.anthropic.com/v1`。
+- 本地 llama.cpp server 可使用 `http://127.0.0.1:8080/v1`，API Key 可以留空。
+- 如果服务商的思考模式字段不同，可在 `Thinking fields` 中按行填写字段路径，例如 `enable_thinking` 或 `chat_template_kwargs.enable_thinking`。
+
+## Markdown 展示
+
+翻译结果会渲染常见 Markdown/GFM 内容：
+
+- 多级标题、段落、粗体、斜体、删除线和链接。
+- 有序列表、无序列表、嵌套列表和 task list。
+- 表格、分隔线、blockquote、上标、下标。
+- 行内代码和 fenced code block。
+- 常见语言代码块的本地轻量高亮，不依赖外部 CDN。
+- KaTeX 公式：`$...$`、`\(...\)`、`$$...$$`、`\[...\]`。
+
+## 权限说明
+
+- `activeTab`：在用户触发翻译、截图或侧边栏操作时访问当前标签页。
+- `contextMenus`：提供右键翻译入口。
+- `clipboardRead` / `clipboardWrite`：在部分 PDF 文本选择读取失败时辅助获取选中文本，并提供复制按钮。
+- `sidePanel`：显示常驻侧边栏。
+- `scripting`：向当前页面注入内容脚本，用于读取选中文本、框选区域和展示悬浮窗。
+- `storage`：保存模型配置、界面开关和最近一次翻译结果。
+- `tabs`：定位当前活动标签页和窗口。
+- `<all_urls>`：让扩展可以在普通网页、PDF 查看器和本地服务页面上工作。
+
+## 排错
+
+- 选中文本后仍提示没有文本：Chrome PDF 查看器有时不会把 PDF 选区暴露给扩展，改用 Screenshot 或 Page 模式。
+- 截图翻译输出不完整：打开 `Image` 查看实际输入图片，必要时关闭 `Compress` 或调大 `Edge`。
+- 当前页翻译带入左右空白：确认 `Crop` 已开启；如果页面背景或水印复杂，裁剪会保守跳过。
+- 模型返回英文：优先检查目标语言设置；截图 OCR 场景会在提示词中要求先识别再翻译。
+- `sidePanel.open()` 用户手势报错：通过扩展弹窗、右键菜单或快捷键打开侧边栏，避免页面脚本主动拉起。
+- 401/403/429：检查 API Key、模型权限、额度和服务商限流。
+
+## 开发验证
+
+- 运行 `npm test` 检查 Markdown 渲染回归。
+- 运行 `npm run package` 生成本地商城上传包。
+- 运行 `node --check src/background.js`、`node --check src/options.js`、`node --check src/sidepanel.js`、`node --check src/content.js`、`node --check src/markdown.js` 检查脚本语法。
+- 运行 `powershell -ExecutionPolicy Bypass -File scripts/package-extension.ps1` 生成本地商城上传包。
+
 ## 接口要求
 
 OpenAI-compatible 模式调用 `POST {baseUrl}/chat/completions`，请求格式兼容 OpenAI Chat Completions：
@@ -62,5 +118,8 @@ llama.cpp server 模式调用 `POST {baseUrl}/chat/completions`，默认 `baseUr
 ## 发布
 
 - 发布前确认 `manifest.json` 中的版本号已经更新。
+- 可使用 `powershell -ExecutionPolicy Bypass -File scripts/package-extension.ps1` 生成商城上传包，输出位于 `dist/`，只包含 `manifest.json` 和 `src/`。
+- 可使用 `powershell -ExecutionPolicy Bypass -File scripts/release.ps1 0.3.7` 执行发布流程：检查干净工作区、更新版本、生成 `RELEASE.md`、运行测试、生成上传包、提交、打 tag、push，并通过 `gh` 创建 release。
+- 如果只想本地准备 release，不推送远程仓库，可加 `-SkipPush`。
 - Chrome Web Store 和 Microsoft Edge Add-ons 都需要上传打包后的扩展压缩包，压缩包不要包含 `.git`、临时文件或本地配置。
 - Git 仓库目录只用于源码管理，不应放入商店上传包。

@@ -97,7 +97,10 @@
             rows="3"
             placeholder="Ask a question after screenshot translation"
           ></textarea>
-          <button type="submit">Ask</button>
+          <div class="answer-actions">
+            <button type="submit">Ask</button>
+            <button id="stop-action" type="button" class="secondary" hidden>Stop</button>
+          </div>
         </form>
         <p id="status" role="status"></p>
       </section>

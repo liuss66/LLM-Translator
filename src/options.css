@@ -39,6 +39,11 @@ p {
   line-height: 1.5;
 }
 
+.section-note {
+  margin: 0;
+  font-size: 13px;
+}
+
 form {
   display: grid;
   gap: 16px;
