@@ -197,6 +197,19 @@ async function handleMessage(message, sender) {
     };
   }
 
+  if (message?.type === "pdf-render-progress") {
+    if (message.tabId) {
+      await showResult(message.tabId, {
+        title: "Rendering PDF page...",
+        source: message.source || "",
+        translation: message.status || "Rendering PDF page.",
+        startedAt: message.startedAt,
+        isStreaming: true
+      });
+    }
+    return { ok: true };
+  }
+
   if (message?.type === "translate-active-selection") {
     const tabId = await getActiveTabId();
     await runForTab(tabId, async () => {
@@ -470,7 +483,7 @@ async function translateCurrentPage(tabId, windowId) {
         startedAt,
         isStreaming: true
       });
-      const renderedPage = await renderPdfPageFromUrl(pdfTarget, settings);
+      const renderedPage = await renderPdfPageFromUrl(pdfTarget, settings, { tabId, startedAt });
       await translateScreenshotImage(tabId, renderedPage.dataUrl, {
         source: `PDF page ${renderedPage.pageNumber} of ${renderedPage.pageCount}`,
         initialTitle: "Recognizing PDF page...",
@@ -576,18 +589,23 @@ function readPdfPageNumber(hash) {
   return Number.parseInt(match[1], 10) || 0;
 }
 
-async function renderPdfPageFromUrl(pdfTarget, settings) {
+async function renderPdfPageFromUrl(pdfTarget, settings, context = {}) {
   await ensurePdfRendererDocument();
-  const renderMaxEdge = clampInteger(settings.imageMaxEdge, 320, 4096, DEFAULT_SETTINGS.imageMaxEdge);
+  const renderMaxEdge = Math.min(
+    1200,
+    clampInteger(settings.imageMaxEdge, 320, 4096, DEFAULT_SETTINGS.imageMaxEdge)
+  );
   const responseMessage = await withTimeout(
     chrome.runtime.sendMessage({
       type: "render-pdf-page-to-image",
       pdfUrl: pdfTarget.url,
       pageNumber: pdfTarget.pageNumber,
-      maxEdge: renderMaxEdge
+      maxEdge: renderMaxEdge,
+      tabId: context.tabId,
+      startedAt: context.startedAt
     }),
-    30000,
-    "PDF rendering timed out after 30 seconds."
+    45000,
+    "PDF rendering timed out after 45 seconds."
   );
 
   if (!responseMessage?.ok) {
@@ -622,6 +640,15 @@ async function ensurePdfRendererDocument() {
     reasons: ["BLOBS"],
     justification: "Render PDF pages to images for OCR translation."
   });
+
+  for (let attempt = 0; attempt < 50; attempt++) {
+    try {
+      const response = await chrome.runtime.sendMessage({ type: "ping-pdf-renderer" });
+      if (response?.ok) return;
+    } catch {}
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error("PDF renderer did not become ready after 5 seconds.");
 }
 
 async function translateScreenshotImage(tabId, imageDataUrl, options) {
