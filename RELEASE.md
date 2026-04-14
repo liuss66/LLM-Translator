@@ -1,11 +1,12 @@
-# Release v0.3.4
+# Release v0.3.5
 
-## Fixes
+## Improvements
 
-- Added Markdown horizontal rule rendering for separator lines such as `---`, `***`, and `___`.
-- Added safe inline `<sup>` and `<sub>` rendering for superscript and subscript text.
-- Kept other raw HTML escaped while allowing only supported superscript and subscript tags.
+- Improved Markdown list rendering so indented bullet and ordered items render as nested lists.
+- Added support for ordered list delimiters using both `1.` and `1)` forms.
+- Added GitHub Flavored Markdown task list rendering for `- [ ]` and `- [x]` items.
+- Added GitHub Flavored Markdown strikethrough rendering for `~~text~~`.
 
 ## Notes
 
-- Reload the extension after updating so the refreshed Markdown renderer and styles are applied.
+- Reload the extension after updating so the refreshed Markdown renderer and list styles are applied.

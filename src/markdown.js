@@ -62,23 +62,10 @@
         continue;
       }
 
-      if (/^\s*[-*]\s+/.test(line)) {
-        const items = [];
-        while (index < lines.length && /^\s*[-*]\s+/.test(lines[index])) {
-          items.push(lines[index].replace(/^\s*[-*]\s+/, ""));
-          index += 1;
-        }
-        blocks.push(`<ul>${items.map((item) => `<li>${renderInline(item)}</li>`).join("")}</ul>`);
-        continue;
-      }
-
-      if (/^\s*\d+\.\s+/.test(line)) {
-        const items = [];
-        while (index < lines.length && /^\s*\d+\.\s+/.test(lines[index])) {
-          items.push(lines[index].replace(/^\s*\d+\.\s+/, ""));
-          index += 1;
-        }
-        blocks.push(`<ol>${items.map((item) => `<li>${renderInline(item)}</li>`).join("")}</ol>`);
+      const listBlock = readListBlock(lines, index);
+      if (listBlock) {
+        blocks.push(listBlock.html);
+        index = listBlock.nextIndex;
         continue;
       }
 
@@ -92,8 +79,7 @@
         !/^(#{1,6})\s+/.test(lines[index]) &&
         !isHorizontalRule(lines[index]) &&
         !readTableBlock(lines, index) &&
-        !/^\s*[-*]\s+/.test(lines[index]) &&
-        !/^\s*\d+\.\s+/.test(lines[index])
+        !parseListMarker(lines[index])
       ) {
         paragraph.push(lines[index]);
         index += 1;
@@ -106,6 +92,143 @@
 
   function isHorizontalRule(line) {
     return /^\s{0,3}([-*_])(?:\s*\1){2,}\s*$/.test(String(line || ""));
+  }
+
+  function readListBlock(lines, startIndex) {
+    const marker = parseListMarker(lines[startIndex]);
+    if (!marker) return null;
+    return parseList(lines, startIndex, marker.indent, marker.type, marker.delimiter);
+  }
+
+  function parseList(lines, startIndex, baseIndent, type, delimiter) {
+    const tagName = type === "ordered" ? "ol" : "ul";
+    const items = [];
+    let index = startIndex;
+    let startNumber = null;
+
+    while (index < lines.length) {
+      const marker = parseListMarker(lines[index]);
+      if (
+        !marker ||
+        marker.indent !== baseIndent ||
+        marker.type !== type ||
+        marker.delimiter !== delimiter
+      ) {
+        break;
+      }
+
+      if (startNumber === null && type === "ordered") {
+        startNumber = marker.number;
+      }
+
+      const itemParts = [];
+      const itemContent = renderListItemContent(marker.content);
+      if (itemContent) itemParts.push(itemContent);
+      index += 1;
+
+      while (index < lines.length) {
+        const nextLine = lines[index];
+        if (!nextLine.trim()) {
+          index += 1;
+          if (itemParts.length > 0) itemParts.push("");
+          continue;
+        }
+
+        const nextMarker = parseListMarker(nextLine);
+        if (nextMarker) {
+          if (nextMarker.indent > baseIndent) {
+            const nested = parseList(
+              lines,
+              index,
+              nextMarker.indent,
+              nextMarker.type,
+              nextMarker.delimiter
+            );
+            itemParts.push(nested.html);
+            index = nested.nextIndex;
+            continue;
+          }
+          break;
+        }
+
+        const nextIndent = countIndent(nextLine);
+        if (nextIndent > baseIndent) {
+          const continuation = stripIndent(nextLine, Math.min(nextIndent, baseIndent + 4)).trim();
+          if (continuation) itemParts.push(renderInline(continuation));
+          index += 1;
+          continue;
+        }
+        break;
+      }
+
+      items.push(`<li>${joinListItemParts(itemParts)}</li>`);
+    }
+
+    const startAttr = type === "ordered" && startNumber && startNumber !== 1 ? ` start="${startNumber}"` : "";
+    return {
+      html: `<${tagName}${startAttr}>${items.join("")}</${tagName}>`,
+      nextIndex: index
+    };
+  }
+
+  function parseListMarker(line) {
+    const match = /^([ \t]*)(?:(([-+*])|(\d{1,9})([.)]))[ \t]+)(.*)$/.exec(String(line || ""));
+    if (!match) return null;
+    const indent = countIndent(match[1]);
+    const bullet = match[3];
+    const number = match[4] ? Number.parseInt(match[4], 10) : null;
+    const orderedDelimiter = match[5] || "";
+    return {
+      indent,
+      type: bullet ? "bullet" : "ordered",
+      delimiter: bullet || orderedDelimiter,
+      number,
+      content: match[6] || ""
+    };
+  }
+
+  function renderListItemContent(content) {
+    const task = /^\s*\[([ xX])\]\s+(.+)$/.exec(content);
+    if (!task) return renderInline(content);
+    const checked = task[1].toLowerCase() === "x";
+    return `<input class="llmt-task-checkbox" type="checkbox" disabled${
+      checked ? " checked" : ""
+    }> ${renderInline(task[2])}`;
+  }
+
+  function joinListItemParts(parts) {
+    return parts
+      .filter((part, index, list) => part || (index > 0 && index < list.length - 1))
+      .map((part) => part || "<br>")
+      .join("");
+  }
+
+  function countIndent(line) {
+    let indent = 0;
+    for (const char of String(line || "")) {
+      if (char === " ") indent += 1;
+      else if (char === "\t") indent += 4;
+      else break;
+    }
+    return indent;
+  }
+
+  function stripIndent(line, indent) {
+    let removed = 0;
+    let index = 0;
+    const text = String(line || "");
+    while (index < text.length && removed < indent) {
+      if (text[index] === " ") {
+        removed += 1;
+        index += 1;
+      } else if (text[index] === "\t") {
+        removed += 4;
+        index += 1;
+      } else {
+        break;
+      }
+    }
+    return text.slice(index);
   }
 
   function readTableBlock(lines, startIndex) {
@@ -248,6 +371,7 @@
 
     let html = escapeHtml(tokenized)
       .replace(/`([^`]+)`/g, "<code>$1</code>")
+      .replace(/~~([^~]+)~~/g, "<del>$1</del>")
       .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
       .replace(/\*([^*]+)\*/g, "<em>$1</em>")
       .replace(

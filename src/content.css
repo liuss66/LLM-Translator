@@ -149,6 +149,21 @@
   padding-left: 22px;
 }
 
+.llmt-panel__translation li > ul,
+.llmt-panel__translation li > ol {
+  margin: 6px 0 0;
+}
+
+.llmt-panel__translation li + li {
+  margin-top: 4px;
+}
+
+.llmt-panel__translation .llmt-task-checkbox {
+  width: auto;
+  margin: 0 6px 0 0;
+  vertical-align: -2px;
+}
+
 .llmt-panel__translation pre {
   overflow-x: auto;
   overflow-y: hidden;

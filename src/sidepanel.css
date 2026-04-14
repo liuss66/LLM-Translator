@@ -327,6 +327,25 @@ header button {
   padding-left: 22px;
 }
 
+#result-translation li > ul,
+#result-translation li > ol,
+.chat-message__content li > ul,
+.chat-message__content li > ol {
+  margin: 6px 0 0;
+}
+
+#result-translation li + li,
+.chat-message__content li + li {
+  margin-top: 4px;
+}
+
+#result-translation .llmt-task-checkbox,
+.chat-message__content .llmt-task-checkbox {
+  width: auto;
+  margin: 0 6px 0 0;
+  vertical-align: -2px;
+}
+
 #result-translation pre {
   overflow-x: auto;
   overflow-y: hidden;
