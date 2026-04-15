@@ -1350,20 +1350,19 @@ function shouldSendThinkingCustomFields(settings) {
 
 function resolveThinkingRequestFields(settings, model = "") {
   const preset = normalizeThinkingFieldPreset(settings.thinkingFieldPreset);
-  if (preset === "off" || preset === "none") {
-    return [];
-  }
   if (preset === "custom") {
     return parseThinkingRequestFields(settings.thinkingRequestFields);
+  }
+  if (preset === "doubao") {
+    return parseThinkingRequestFields(thinkingFieldsForPreset(preset));
   }
   return parseThinkingRequestFields(inferThinkingRequestFields(settings, model));
 }
 
 function thinkingFieldsForPreset(preset) {
   switch (preset) {
-    case "off":
-    case "none":
-      return "";
+    case "doubao":
+      return "thinking.type";
     case "custom":
       return "";
     default:
@@ -1384,6 +1383,11 @@ function inferThinkingRequestFields(settings, model = "") {
   // OpenRouter uses reasoning object
   if (host.includes("openrouter.ai")) {
     return "reasoning.enabled\nreasoning.effort\nreasoning.max_tokens";
+  }
+
+  // Doubao / VolcEngine uses thinking.type
+  if (host.includes("volces.com") || host.includes("volcengine") || modelName.includes("doubao")) {
+    return "thinking.type";
   }
 
   // Default fallback: most common fields for OpenAI-compatible APIs
@@ -1970,9 +1974,7 @@ function normalizeThinkingEffort(value) {
 
 function normalizeThinkingFieldPreset(value) {
   const preset = String(value || "").trim().toLowerCase();
-  return ["auto", "off", "none", "custom"].includes(preset)
-    ? preset === "none"
-      ? "off"
-      : preset
+  return ["auto", "doubao", "custom"].includes(preset)
+    ? preset
     : DEFAULT_SETTINGS.thinkingFieldPreset;
 }

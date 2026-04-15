@@ -678,9 +678,7 @@ function normalizeThinkingEffort(value) {
 
 function normalizeThinkingFieldPreset(value) {
   const preset = String(value || "").trim().toLowerCase();
-  return ["auto", "off", "none", "custom"].includes(preset)
-    ? preset === "none"
-      ? "off"
-      : preset
+  return ["auto", "doubao", "custom"].includes(preset)
+    ? preset
     : DEFAULT_SETTINGS.thinkingFieldPreset;
 }
