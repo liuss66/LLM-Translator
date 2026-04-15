@@ -95,7 +95,20 @@
 
         <label>
           Target language
-          <input name="targetLanguage" type="text" placeholder="中文" required>
+          <select id="target-language-select">
+            <option value="中文">中文</option>
+            <option value="English">English</option>
+            <option value="日本語">日本語</option>
+            <option value="한국어">한국어</option>
+            <option value="Français">Français</option>
+            <option value="Deutsch">Deutsch</option>
+            <option value="Español">Español</option>
+            <option value="Русский">Русский</option>
+            <option value="Português">Português</option>
+            <option value="Italiano">Italiano</option>
+            <option value="Custom">Custom</option>
+          </select>
+          <input id="target-language-custom" name="targetLanguage" type="text" placeholder="Custom language" hidden>
         </label>
 
         <label class="checkbox-row">
@@ -134,11 +147,28 @@
         </label>
 
         <label>
+          Thinking effort
+          <select name="thinkingEffort">
+            <option value="none">none</option>
+            <option value="minimal">minimal</option>
+            <option value="low">low</option>
+            <option value="medium">medium</option>
+            <option value="high">high</option>
+            <option value="xhigh">xhigh</option>
+          </select>
+        </label>
+
+        <label>
+          Thinking token budget
+          <input name="thinkingBudgetTokens" type="number" min="0" max="128000" step="128" placeholder="0">
+        </label>
+
+        <label>
           Thinking request fields
           <textarea
             name="thinkingRequestFields"
             rows="3"
-            placeholder="enable_thinking&#10;chat_template_kwargs.enable_thinking"
+            placeholder="thinking.type&#10;enable_thinking&#10;chat_template_kwargs.enable_thinking"
           ></textarea>
         </label>
 

@@ -12,7 +12,9 @@ const DEFAULT_SETTINGS = {
   imageMaxEdge: 1600,
   imageJpegQuality: 0.88,
   enableThinking: false,
-  thinkingRequestFields: "enable_thinking\nchat_template_kwargs.enable_thinking",
+  thinkingEffort: "medium",
+  thinkingBudgetTokens: 0,
+  thinkingRequestFields: "thinking.type\nenable_thinking\nchat_template_kwargs.enable_thinking",
   currentPresetId: "",
   modelPresets: [],
   systemPrompt:
@@ -26,6 +28,8 @@ const MODEL_SETTING_KEYS = [
   "visionModel",
   "targetLanguage",
   "enableThinking",
+  "thinkingEffort",
+  "thinkingBudgetTokens",
   "thinkingRequestFields",
   "systemPrompt"
 ];
@@ -37,11 +41,16 @@ const presetName = document.querySelector("#preset-name");
 const importSettingsFile = document.querySelector("#import-settings-file");
 const providerTemplate = document.querySelector("#provider-template");
 const providerTemplateSummary = document.querySelector("#provider-template-summary");
+const targetLanguageSelect = document.querySelector("#target-language-select");
+const targetLanguageCustom = document.querySelector("#target-language-custom");
 let saveTimer;
 let modelPresets = [];
 let currentPresetId = "";
 const EXPORT_VERSION = 1;
 const IMPORTABLE_SETTING_KEYS = Object.keys(DEFAULT_SETTINGS).filter((key) => key !== "apiKey");
+const TARGET_LANGUAGE_OPTIONS = Array.from(targetLanguageSelect.options)
+  .map((option) => option.value)
+  .filter((value) => value !== "Custom");
 const providerDefaults = {
   openai: {
     apiBaseUrl: "https://api.openai.com/v1",
@@ -68,7 +77,21 @@ const PROVIDER_TEMPLATES = [
     textModel: "gpt-4o-mini",
     visionModel: "gpt-4o-mini",
     enableThinking: false,
+    thinkingEffort: "medium",
+    thinkingBudgetTokens: 0,
     thinkingRequestFields: ""
+  },
+  {
+    id: "openai-reasoning",
+    name: "OpenAI Reasoning-compatible",
+    provider: "openai",
+    apiBaseUrl: "https://api.openai.com/v1",
+    textModel: "gpt-5-mini",
+    visionModel: "gpt-5-mini",
+    enableThinking: false,
+    thinkingEffort: "medium",
+    thinkingBudgetTokens: 0,
+    thinkingRequestFields: "reasoning_effort"
   },
   {
     id: "anthropic",
@@ -78,7 +101,21 @@ const PROVIDER_TEMPLATES = [
     textModel: "claude-sonnet-4-20250514",
     visionModel: "claude-sonnet-4-20250514",
     enableThinking: false,
+    thinkingEffort: "medium",
+    thinkingBudgetTokens: 1024,
     thinkingRequestFields: ""
+  },
+  {
+    id: "volcengine",
+    name: "VolcEngine Ark / Doubao",
+    provider: "openai",
+    apiBaseUrl: "https://ark.cn-beijing.volces.com/api/v3",
+    textModel: "doubao-seed-1-6-250615",
+    visionModel: "doubao-seed-1-6-vision-250615",
+    enableThinking: false,
+    thinkingEffort: "medium",
+    thinkingBudgetTokens: 0,
+    thinkingRequestFields: "thinking.type"
   },
   {
     id: "openrouter",
@@ -88,16 +125,32 @@ const PROVIDER_TEMPLATES = [
     textModel: "openai/gpt-4o-mini",
     visionModel: "openai/gpt-4o-mini",
     enableThinking: false,
-    thinkingRequestFields: ""
+    thinkingEffort: "medium",
+    thinkingBudgetTokens: 0,
+    thinkingRequestFields: "reasoning.enabled\nreasoning.effort\nreasoning.max_tokens"
   },
   {
-    id: "deepseek",
-    name: "DeepSeek",
+    id: "deepseek-chat",
+    name: "DeepSeek Chat",
     provider: "openai",
     apiBaseUrl: "https://api.deepseek.com/v1",
     textModel: "deepseek-chat",
     visionModel: "deepseek-chat",
     enableThinking: false,
+    thinkingEffort: "medium",
+    thinkingBudgetTokens: 0,
+    thinkingRequestFields: ""
+  },
+  {
+    id: "deepseek-reasoner",
+    name: "DeepSeek Reasoner",
+    provider: "openai",
+    apiBaseUrl: "https://api.deepseek.com/v1",
+    textModel: "deepseek-reasoner",
+    visionModel: "deepseek-reasoner",
+    enableThinking: false,
+    thinkingEffort: "medium",
+    thinkingBudgetTokens: 0,
     thinkingRequestFields: ""
   },
   {
@@ -108,6 +161,8 @@ const PROVIDER_TEMPLATES = [
     textModel: "Qwen/Qwen2.5-7B-Instruct",
     visionModel: "Qwen/Qwen2.5-VL-7B-Instruct",
     enableThinking: false,
+    thinkingEffort: "medium",
+    thinkingBudgetTokens: 0,
     thinkingRequestFields: "enable_thinking\nchat_template_kwargs.enable_thinking"
   },
   {
@@ -118,6 +173,8 @@ const PROVIDER_TEMPLATES = [
     textModel: "qwen2.5",
     visionModel: "llava",
     enableThinking: false,
+    thinkingEffort: "medium",
+    thinkingBudgetTokens: 0,
     thinkingRequestFields: ""
   },
   {
@@ -128,6 +185,8 @@ const PROVIDER_TEMPLATES = [
     textModel: "local-model",
     visionModel: "local-model",
     enableThinking: false,
+    thinkingEffort: "medium",
+    thinkingBudgetTokens: 0,
     thinkingRequestFields: "chat_template_kwargs.enable_thinking"
   }
 ];
@@ -191,6 +250,12 @@ providerTemplate.addEventListener("change", () => {
   providerTemplateSummary.value = template
     ? `${template.provider} · ${template.apiBaseUrl} · ${template.textModel}`
     : "Provider, base URL, models, thinking fields";
+});
+
+targetLanguageSelect.addEventListener("change", async () => {
+  syncTargetLanguageCustom();
+  currentPresetId = "";
+  await saveSettings("Saved.");
 });
 
 document.querySelector("#apply-provider-template").addEventListener("click", async () => {
@@ -320,6 +385,7 @@ function fillForm(settings) {
       field.value = value;
     }
   }
+  setTargetLanguageValue(settings.targetLanguage);
 }
 
 function readFormSettings() {
@@ -345,6 +411,9 @@ function readFormSettings() {
   settings.imageMaxEdge = clampInteger(form.elements.imageMaxEdge.value, 320, 4096, 1600);
   settings.imageJpegQuality = clampNumber(form.elements.imageJpegQuality.value, 0.5, 1, 0.88);
   settings.enableThinking = form.elements.enableThinking.checked;
+  settings.thinkingEffort = normalizeThinkingEffort(form.elements.thinkingEffort.value);
+  settings.thinkingBudgetTokens = clampInteger(form.elements.thinkingBudgetTokens.value, 0, 128000, 0);
+  settings.targetLanguage = readTargetLanguage();
   settings.currentPresetId = currentPresetId;
   settings.modelPresets = modelPresets;
   return settings;
@@ -390,7 +459,38 @@ function applyProviderTemplate(template) {
   form.elements.textModel.value = template.textModel;
   form.elements.visionModel.value = template.visionModel;
   form.elements.enableThinking.checked = Boolean(template.enableThinking);
+  form.elements.thinkingEffort.value = normalizeThinkingEffort(template.thinkingEffort);
+  form.elements.thinkingBudgetTokens.value = clampInteger(template.thinkingBudgetTokens, 0, 128000, 0);
   form.elements.thinkingRequestFields.value = template.thinkingRequestFields || "";
+}
+
+function setTargetLanguageValue(value) {
+  const language = String(value || DEFAULT_SETTINGS.targetLanguage).trim() || DEFAULT_SETTINGS.targetLanguage;
+  if (TARGET_LANGUAGE_OPTIONS.includes(language)) {
+    targetLanguageSelect.value = language;
+    targetLanguageCustom.value = language;
+  } else {
+    targetLanguageSelect.value = "Custom";
+    targetLanguageCustom.value = language;
+  }
+  syncTargetLanguageCustom();
+}
+
+function syncTargetLanguageCustom() {
+  const custom = targetLanguageSelect.value === "Custom";
+  targetLanguageCustom.hidden = !custom;
+  targetLanguageCustom.required = custom;
+  if (!custom) {
+    targetLanguageCustom.value = targetLanguageSelect.value;
+  }
+}
+
+function readTargetLanguage() {
+  const value =
+    targetLanguageSelect.value === "Custom"
+      ? targetLanguageCustom.value
+      : targetLanguageSelect.value;
+  return String(value || DEFAULT_SETTINGS.targetLanguage).trim() || DEFAULT_SETTINGS.targetLanguage;
 }
 
 function exportSettings() {
@@ -456,6 +556,12 @@ function sanitizeSettingValue(key, value) {
   }
   if (key === "imageJpegQuality") {
     return clampNumber(value, 0.5, 1, DEFAULT_SETTINGS.imageJpegQuality);
+  }
+  if (key === "thinkingEffort") {
+    return normalizeThinkingEffort(value);
+  }
+  if (key === "thinkingBudgetTokens") {
+    return clampInteger(value, 0, 128000, DEFAULT_SETTINGS.thinkingBudgetTokens);
   }
   if (key === "modelPresets") {
     return sanitizeModelPresets(value);
@@ -537,4 +643,11 @@ function clampNumber(value, min, max, fallback) {
   const number = Number.parseFloat(value);
   if (!Number.isFinite(number)) return fallback;
   return Math.min(max, Math.max(min, number));
+}
+
+function normalizeThinkingEffort(value) {
+  const effort = String(value || "").trim().toLowerCase();
+  return ["none", "minimal", "low", "medium", "high", "xhigh"].includes(effort)
+    ? effort
+    : DEFAULT_SETTINGS.thinkingEffort;
 }

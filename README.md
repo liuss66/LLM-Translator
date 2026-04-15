@@ -67,8 +67,11 @@
 - Vision 模型需要支持图片输入，用于 Screenshot 和 Page 模式。
 - OpenAI-compatible 服务通常填写 `/v1` 结尾的 Base URL。
 - Anthropic 服务使用 `https://api.anthropic.com/v1`。
-- 本地 llama.cpp server 可使用 `http://127.0.0.1:8080/v1`，API Key 可以留空。
-- 如果服务商的思考模式字段不同，可在 `Thinking fields` 中按行填写字段路径，例如 `enable_thinking` 或 `chat_template_kwargs.enable_thinking`。
+- 本地 llama.cpp server 可使用 `http://127.0.0.1:8080/v1`，API Key 可以留空。若希望插件开关能控制思考模式，建议启动 server 时使用 `--jinja --reasoning auto`，插件模板会通过 `chat_template_kwargs.enable_thinking` 传递开关；如果 server 已用 `--reasoning off` 或 `--reasoning on` 固定策略，单次 API 请求通常不能可靠覆盖该全局设置。`--reasoning-budget` 属于 server 侧预算参数，插件侧不默认发送。
+- 思考模式不是所有模型都能控制：DeepSeek Reasoner 这类模型通常由模型名决定是否思考；OpenAI/OpenRouter 使用 `reasoning_effort` 或 `reasoning.*`；Anthropic 使用 `thinking.budget_tokens`；豆包/火山方舟使用 `thinking.type`。优先在 Options 中选择 Provider template，模板会填入对应字段。
+- `Thinking effort` 用于支持 `reasoning_effort` / `reasoning.effort` 的服务，常见值为 `none`、`minimal`、`low`、`medium`、`high`、`xhigh`，具体可用值取决于模型服务。
+- `Thinking token budget` 用于支持 token 预算的服务，例如 Anthropic 的 `thinking.budget_tokens` 或 OpenRouter 的 `reasoning.max_tokens`。填 `0` 表示不发送预算字段。
+- `Thinking fields` 支持按行填写字段路径：`thinking.type` 会自动映射为 `enabled` / `disabled`，`reasoning_effort` 和 `reasoning.effort` 会使用 `Thinking effort`，`reasoning.max_tokens` 和 `thinking.budget_tokens` 会使用 `Thinking token budget`，其他字段按布尔值发送。
 
 ## Markdown 展示
 

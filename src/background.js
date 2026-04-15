@@ -12,7 +12,9 @@ const DEFAULT_SETTINGS = {
   imageMaxEdge: 1600,
   imageJpegQuality: 0.88,
   enableThinking: false,
-  thinkingRequestFields: "enable_thinking\nchat_template_kwargs.enable_thinking",
+  thinkingEffort: "medium",
+  thinkingBudgetTokens: 0,
+  thinkingRequestFields: "thinking.type\nenable_thinking\nchat_template_kwargs.enable_thinking",
   currentPresetId: "",
   modelPresets: [],
   systemPrompt:
@@ -26,6 +28,8 @@ const MODEL_SETTING_KEYS = [
   "visionModel",
   "targetLanguage",
   "enableThinking",
+  "thinkingEffort",
+  "thinkingBudgetTokens",
   "thinkingRequestFields",
   "systemPrompt"
 ];
@@ -605,9 +609,18 @@ async function readSettings() {
     1,
     DEFAULT_SETTINGS.imageJpegQuality
   );
-  settings.thinkingRequestFields = String(
-    settings.thinkingRequestFields || DEFAULT_SETTINGS.thinkingRequestFields
-  ).trim();
+  settings.enableThinking = Boolean(settings.enableThinking);
+  settings.thinkingEffort = normalizeThinkingEffort(settings.thinkingEffort);
+  settings.thinkingBudgetTokens = clampInteger(
+    settings.thinkingBudgetTokens,
+    0,
+    128000,
+    DEFAULT_SETTINGS.thinkingBudgetTokens
+  );
+  settings.thinkingRequestFields =
+    typeof settings.thinkingRequestFields === "string"
+      ? settings.thinkingRequestFields.trim()
+      : DEFAULT_SETTINGS.thinkingRequestFields;
   return settings;
 }
 
@@ -831,6 +844,15 @@ async function callAnthropicMessages(settings, model, messages, options = {}) {
   const controller = new AbortController();
   activeModelControllers.add(controller);
   const { system, anthropicMessages } = toAnthropicMessages(withThinkingInstruction(settings, messages));
+  const body = {
+    model,
+    max_tokens: 2048,
+    temperature: 0.2,
+    stream: Boolean(options.stream),
+    system,
+    messages: anthropicMessages
+  };
+  applyAnthropicThinkingSettings(settings, body);
   try {
     const response = await fetch(`${settings.apiBaseUrl}/messages`, {
       method: "POST",
@@ -840,14 +862,7 @@ async function callAnthropicMessages(settings, model, messages, options = {}) {
         "anthropic-version": "2023-06-01",
         "anthropic-dangerous-direct-browser-access": "true"
       },
-      body: JSON.stringify({
-        model,
-        max_tokens: 2048,
-        temperature: 0.2,
-        stream: Boolean(options.stream),
-        system,
-        messages: anthropicMessages
-      }),
+      body: JSON.stringify(body),
       signal: controller.signal
     });
 
@@ -965,24 +980,97 @@ function withThinkingInstruction(settings, messages) {
 
 function applyThinkingSettings(settings, body) {
   const enableThinking = Boolean(settings.enableThinking);
-  if (settings.provider === "anthropic" || !shouldSendThinkingCustomFields(settings)) {
+  const fieldPaths = parseThinkingRequestFields(settings.thinkingRequestFields);
+  if (settings.provider === "anthropic" || fieldPaths.length === 0 || !shouldSendThinkingCustomFields(settings)) {
     return false;
   }
 
-  const fieldPaths = parseThinkingRequestFields(settings.thinkingRequestFields);
-  for (const fieldPath of fieldPaths) {
-    setNestedRequestField(body, fieldPath, enableThinking);
+  for (const fieldSpec of fieldPaths) {
+    const { path, explicitValue } = parseThinkingFieldSpec(fieldSpec);
+    const value = thinkingFieldValue(settings, path, enableThinking, explicitValue);
+    if (value !== undefined) {
+      setNestedRequestField(body, path, value);
+    }
   }
   return fieldPaths.length > 0;
 }
 
-function shouldSendThinkingCustomFields(settings) {
-  if (settings.provider === "llamacpp") return true;
-  try {
-    return new URL(settings.apiBaseUrl).hostname.toLowerCase() !== "api.openai.com";
-  } catch {
-    return true;
+function applyAnthropicThinkingSettings(settings, body) {
+  if (!settings.enableThinking) return;
+  const budgetTokens = clampInteger(settings.thinkingBudgetTokens, 1024, 128000, 1024);
+  body.thinking = {
+    type: "enabled",
+    budget_tokens: budgetTokens
+  };
+  body.max_tokens = Math.max(Number(body.max_tokens || 0), budgetTokens + 1024);
+}
+
+function parseThinkingFieldSpec(fieldSpec) {
+  const text = String(fieldSpec || "").trim();
+  const equalsIndex = text.indexOf("=");
+  if (equalsIndex < 0) {
+    return { path: text, explicitValue: "" };
   }
+  return {
+    path: text.slice(0, equalsIndex).trim(),
+    explicitValue: text.slice(equalsIndex + 1).trim()
+  };
+}
+
+function thinkingFieldValue(settings, fieldPath, enableThinking, explicitValue = "") {
+  if (explicitValue) {
+    return parseExplicitThinkingValue(settings, explicitValue, enableThinking);
+  }
+
+  const normalized = String(fieldPath || "").trim().toLowerCase();
+  if (normalized === "thinking") {
+    return { type: enableThinking ? "enabled" : "disabled" };
+  }
+  if (normalized === "thinking.type") {
+    return enableThinking ? "enabled" : "disabled";
+  }
+  if (normalized === "reasoning_effort" || normalized === "reasoning.effort") {
+    return enableThinking ? normalizeThinkingEffort(settings.thinkingEffort) || "medium" : "minimal";
+  }
+  if (normalized === "reasoning.enabled") {
+    return enableThinking;
+  }
+  if (normalized === "reasoning.exclude") {
+    return !enableThinking;
+  }
+  if (normalized === "reasoning.max_tokens" || normalized === "thinking.budget_tokens") {
+    const budgetTokens = clampInteger(settings.thinkingBudgetTokens, 0, 128000, 0);
+    return enableThinking && budgetTokens > 0 ? budgetTokens : undefined;
+  }
+  return enableThinking;
+}
+
+function parseExplicitThinkingValue(settings, rawValue, enableThinking) {
+  const value = String(rawValue || "").trim();
+  if (!value) return undefined;
+  if (value.includes("|")) {
+    const [enabledValue, disabledValue = ""] = value.split("|").map((part) => part.trim());
+    return parseExplicitThinkingValue(settings, enableThinking ? enabledValue : disabledValue, enableThinking);
+  }
+  if (value === "{effort}") {
+    return normalizeThinkingEffort(settings.thinkingEffort) || "medium";
+  }
+  if (value === "{budget}") {
+    const budgetTokens = clampInteger(settings.thinkingBudgetTokens, 0, 128000, 0);
+    return budgetTokens > 0 ? budgetTokens : undefined;
+  }
+  if (/^(true|false)$/i.test(value)) return value.toLowerCase() === "true";
+  if (/^-?\d+$/.test(value)) return Number.parseInt(value, 10);
+  if ((value.startsWith("{") && value.endsWith("}")) || (value.startsWith("[") && value.endsWith("]"))) {
+    try {
+      return JSON.parse(value);
+    } catch {}
+  }
+  return value;
+}
+
+function shouldSendThinkingCustomFields(settings) {
+  return settings.provider !== "anthropic";
 }
 
 function parseThinkingRequestFields(rawFields) {
@@ -1457,4 +1545,11 @@ function clampNumber(value, min, max, fallback) {
   const number = Number.parseFloat(value);
   if (!Number.isFinite(number)) return fallback;
   return Math.min(max, Math.max(min, number));
+}
+
+function normalizeThinkingEffort(value) {
+  const effort = String(value || "").trim().toLowerCase();
+  return ["none", "minimal", "low", "medium", "high", "xhigh"].includes(effort)
+    ? effort
+    : DEFAULT_SETTINGS.thinkingEffort;
 }
