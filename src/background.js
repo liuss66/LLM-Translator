@@ -1350,31 +1350,22 @@ function shouldSendThinkingCustomFields(settings) {
 
 function resolveThinkingRequestFields(settings, model = "") {
   const preset = normalizeThinkingFieldPreset(settings.thinkingFieldPreset);
+  if (preset === "off" || preset === "none") {
+    return [];
+  }
   if (preset === "custom") {
     return parseThinkingRequestFields(settings.thinkingRequestFields);
-  }
-  if (preset !== "auto") {
-    return parseThinkingRequestFields(thinkingFieldsForPreset(preset));
   }
   return parseThinkingRequestFields(inferThinkingRequestFields(settings, model));
 }
 
 function thinkingFieldsForPreset(preset) {
   switch (preset) {
+    case "off":
     case "none":
       return "";
-    case "openai-reasoning":
-      return "reasoning_effort";
-    case "openrouter":
-      return "reasoning.enabled\nreasoning.effort\nreasoning.max_tokens";
-    case "doubao":
-      return "thinking.type";
-    case "qwen-compatible":
-      return "enable_thinking\nchat_template_kwargs.enable_thinking\nextra_body.enable_thinking\nextra_body.chat_template_kwargs.enable_thinking";
-    case "llamacpp":
-      return "chat_template_kwargs.enable_thinking\nextra_body.enable_thinking\nextra_body.chat_template_kwargs.enable_thinking";
-    case "compatible-broad":
-      return "thinking.type\nreasoning.enabled\nreasoning.effort\nreasoning.max_tokens\nenable_thinking\nchat_template_kwargs.enable_thinking\nextra_body.enable_thinking\nextra_body.chat_template_kwargs.enable_thinking";
+    case "custom":
+      return "";
     default:
       return "";
   }
@@ -1385,42 +1376,18 @@ function inferThinkingRequestFields(settings, model = "") {
   const host = apiHost(settings.apiBaseUrl);
   const modelName = String(model || settings.textModel || "").toLowerCase();
 
-  if (settings.provider === "llamacpp" || isLocalApiHost(host)) {
-    return host.includes("11434")
-      ? ""
-      : "chat_template_kwargs.enable_thinking\nextra_body.enable_thinking\nextra_body.chat_template_kwargs.enable_thinking\nenable_thinking";
+  // OpenAI reasoning models use reasoning_effort
+  if (host === "api.openai.com" && isOpenAIReasoningModel(modelName)) {
+    return "reasoning_effort";
   }
 
-  if (host === "api.openai.com") {
-    return isOpenAIReasoningModel(modelName) ? "reasoning_effort" : "";
-  }
-
+  // OpenRouter uses reasoning object
   if (host.includes("openrouter.ai")) {
     return "reasoning.enabled\nreasoning.effort\nreasoning.max_tokens";
   }
 
-  if (host.includes("volces.com") || host.includes("volcengine") || modelName.includes("doubao")) {
-    return "thinking.type";
-  }
-
-  if (host.includes("deepseek.com") || modelName.includes("deepseek-reasoner")) {
-    return "";
-  }
-
-  if (
-    host.includes("siliconflow") ||
-    host.includes("dashscope") ||
-    host.includes("aliyuncs.com") ||
-    modelName.includes("qwen")
-  ) {
-    return "enable_thinking\nchat_template_kwargs.enable_thinking\nextra_body.enable_thinking\nextra_body.chat_template_kwargs.enable_thinking";
-  }
-
-  if (isOpenAIReasoningModel(modelName)) {
-    return "reasoning_effort";
-  }
-
-  return thinkingFieldsForPreset("compatible-broad");
+  // Default fallback: most common fields for OpenAI-compatible APIs
+  return "enable_thinking\nchat_template_kwargs.enable_thinking";
 }
 
 function apiHost(apiBaseUrl) {
@@ -2003,17 +1970,9 @@ function normalizeThinkingEffort(value) {
 
 function normalizeThinkingFieldPreset(value) {
   const preset = String(value || "").trim().toLowerCase();
-  return [
-    "auto",
-    "none",
-    "openai-reasoning",
-    "openrouter",
-    "doubao",
-    "qwen-compatible",
-    "llamacpp",
-    "compatible-broad",
-    "custom"
-  ].includes(preset)
-    ? preset
+  return ["auto", "off", "none", "custom"].includes(preset)
+    ? preset === "none"
+      ? "off"
+      : preset
     : DEFAULT_SETTINGS.thinkingFieldPreset;
 }

@@ -535,17 +535,9 @@ function normalizeThinkingEffort(value) {
 
 function normalizeThinkingFieldPreset(value) {
   const preset = String(value || "").trim().toLowerCase();
-  return [
-    "auto",
-    "none",
-    "openai-reasoning",
-    "openrouter",
-    "doubao",
-    "qwen-compatible",
-    "llamacpp",
-    "compatible-broad",
-    "custom"
-  ].includes(preset)
-    ? preset
+  return ["auto", "off", "none", "custom"].includes(preset)
+    ? preset === "none"
+      ? "off"
+      : preset
     : DEFAULT_SETTINGS.thinkingFieldPreset;
 }
