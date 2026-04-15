@@ -93,7 +93,12 @@ imageJpegQuality.addEventListener("change", async () => {
 
 modelPreset.addEventListener("change", async () => {
   const presetId = modelPreset.value;
-  if (!presetId) return;
+  status.textContent = "";
+  if (!presetId) {
+    await chrome.runtime.openOptionsPage();
+    window.close();
+    return;
+  }
   status.textContent = "Testing model...";
   modelPreset.disabled = true;
   try {
@@ -103,11 +108,20 @@ modelPreset.addEventListener("change", async () => {
     });
     if (!response?.ok) throw new Error(response?.error || "Model preset is unavailable.");
     status.textContent = "切换成功";
+    modelPreset.value = presetId;
   } catch (error) {
-    status.textContent = error.message || "Model preset is unavailable.";
+    const message = error.message || "Model preset is unavailable.";
     await loadSettings();
+    status.textContent = message;
   } finally {
     modelPreset.disabled = false;
+  }
+});
+
+modelPreset.addEventListener("click", async () => {
+  if (modelPreset.options.length === 1 && modelPreset.options[0].value === "") {
+    await chrome.runtime.openOptionsPage();
+    window.close();
   }
 });
 
@@ -177,7 +191,7 @@ async function loadSettings() {
   imageMaxEdge.value = settings.imageMaxEdge || 1600;
   imageJpegQuality.value = settings.imageJpegQuality || 0.88;
   enableThinking.checked = Boolean(settings.enableThinking);
-  renderPresetOptions(settings.modelPresets || [], settings.currentPresetId || "");
+  renderPresetOptions(settings);
 }
 
 async function refreshActiveTabContext() {
@@ -189,9 +203,14 @@ async function refreshActiveTabContext() {
   };
 }
 
-function renderPresetOptions(presets, currentPresetId) {
-  const currentValue = currentPresetId || "";
-  modelPreset.innerHTML = '<option value="">Current</option>';
+function renderPresetOptions(settings) {
+  const presets = settings.modelPresets || [];
+  const currentValue = resolveActivePresetId(settings, presets);
+  modelPreset.innerHTML = "";
+  if (presets.length === 0) {
+    modelPreset.innerHTML = '<option value="">New Preset</option>';
+    return;
+  }
   presets.forEach((preset) => {
     const option = document.createElement("option");
     option.value = preset.id;
@@ -199,6 +218,35 @@ function renderPresetOptions(presets, currentPresetId) {
     modelPreset.append(option);
   });
   modelPreset.value = currentValue;
+}
+
+function resolveActivePresetId(settings, presets) {
+  if (settings.currentPresetId && presets.some((preset) => preset.id === settings.currentPresetId)) {
+    return settings.currentPresetId;
+  }
+  const matched = presets.find((preset) => presetMatchesSettings(preset, settings));
+  return matched?.id || "";
+}
+
+function presetMatchesSettings(preset, settings) {
+  const keys = [
+    "provider",
+    "apiBaseUrl",
+    "textModel",
+    "visionModel",
+    "enableThinking",
+    "thinkingEffort",
+    "thinkingBudgetTokens",
+    "thinkingFieldPreset",
+    "thinkingRequestFields",
+    "systemPrompt"
+  ];
+  return keys.every((key) => normalizePresetValue(preset[key]) === normalizePresetValue(settings[key]));
+}
+
+function normalizePresetValue(value) {
+  if (typeof value === "boolean") return value ? "true" : "false";
+  return String(value ?? "").trim();
 }
 
 async function readSelectedTextWithClipboardFallback(tabId) {

@@ -15,7 +15,8 @@ const DEFAULT_SETTINGS = {
   thinkingEffort: "medium",
   thinkingBudgetTokens: 0,
   thinkingFieldPreset: "auto",
-  thinkingRequestFields: "thinking.type\nenable_thinking\nchat_template_kwargs.enable_thinking",
+  thinkingRequestFields:
+    "thinking.type\nenable_thinking\nchat_template_kwargs.enable_thinking\nextra_body.enable_thinking\nextra_body.chat_template_kwargs.enable_thinking",
   currentPresetId: "",
   modelPresets: [],
   systemPrompt:
@@ -27,7 +28,6 @@ const MODEL_SETTING_KEYS = [
   "apiKey",
   "textModel",
   "visionModel",
-  "targetLanguage",
   "enableThinking",
   "thinkingEffort",
   "thinkingBudgetTokens",
@@ -46,6 +46,7 @@ const targetLanguageCustom = document.querySelector("#target-language-custom");
 let saveTimer;
 let modelPresets = [];
 let currentPresetId = "";
+let isLoadingPreset = false;
 const EXPORT_VERSION = 1;
 const IMPORTABLE_SETTING_KEYS = Object.keys(DEFAULT_SETTINGS).filter((key) => key !== "apiKey");
 const TARGET_LANGUAGE_OPTIONS = Array.from(targetLanguageSelect.options)
@@ -71,7 +72,6 @@ const providerDefaults = {
 loadSettings();
 
 form.elements.provider.addEventListener("change", async () => {
-  currentPresetId = "";
   const defaults = providerDefaults[form.elements.provider.value];
   form.elements.apiBaseUrl.value = defaults.apiBaseUrl;
   form.elements.textModel.value = defaults.textModel;
@@ -80,18 +80,14 @@ form.elements.provider.addEventListener("change", async () => {
 });
 
 form.addEventListener("change", async (event) => {
+  if (isLoadingPreset) return;
   if (isPresetControl(event.target)) return;
-  if (MODEL_SETTING_KEYS.includes(event.target.name)) {
-    currentPresetId = "";
-  }
   await saveSettings("Saved.");
 });
 
 form.addEventListener("input", (event) => {
+  if (isLoadingPreset) return;
   if (isPresetControl(event.target)) return;
-  if (MODEL_SETTING_KEYS.includes(event.target.name)) {
-    currentPresetId = "";
-  }
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     saveSettings("Saved.");
@@ -100,7 +96,8 @@ form.addEventListener("input", (event) => {
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
-  await saveSettings("Saved.");
+  const presetId = await saveCurrentModelPreset();
+  await saveSettings(presetId ? "Settings and preset saved." : "Saved.");
 });
 
 document.querySelector("#test-model").addEventListener("click", async () => {
@@ -123,7 +120,6 @@ document.querySelector("#open-shortcuts").addEventListener("click", () => {
 
 targetLanguageSelect.addEventListener("change", async () => {
   syncTargetLanguageCustom();
-  currentPresetId = "";
   await saveSettings("Saved.");
 });
 
@@ -162,14 +158,25 @@ document.querySelector("#restore-defaults").addEventListener("click", async () =
 });
 
 presetSelect.addEventListener("change", () => {
-  const preset = modelPresets.find((item) => item.id === presetSelect.value);
-  presetName.value = preset?.name || "";
+  loadSelectedPreset();
 });
 
 document.querySelector("#save-preset").addEventListener("click", async () => {
-  const existingId = presetSelect.value;
+  const presetId = await saveCurrentModelPreset();
+  if (!presetId) {
+    status.textContent = "Model preset needs a name or model.";
+    return;
+  }
+  await saveSettings("Preset saved.");
+});
+
+async function saveCurrentModelPreset() {
+  const existingId = currentPresetId;
   const id = existingId || createPresetId();
   const name = presetName.value.trim() || form.elements.textModel.value.trim() || "Unnamed";
+  if (!existingId && name === "Unnamed") {
+    return "";
+  }
   const preset = {
     id,
     name,
@@ -187,24 +194,38 @@ document.querySelector("#save-preset").addEventListener("click", async () => {
   });
   renderPresetOptions();
   presetSelect.value = id;
-  status.textContent = "Preset saved.";
+  presetName.value = name;
+  return id;
+}
+
+document.querySelector("#restore-default-prompt").addEventListener("click", async () => {
+  form.elements.systemPrompt.value = DEFAULT_SETTINGS.systemPrompt;
+  await saveSettings("Default prompt restored.");
 });
 
-document.querySelector("#load-preset").addEventListener("click", async () => {
+async function loadSelectedPreset() {
   const preset = modelPresets.find((item) => item.id === presetSelect.value);
   if (!preset) {
-    status.textContent = "Select a preset first.";
+    currentPresetId = "";
+    presetName.value = "";
+    await chrome.storage.sync.set({ currentPresetId });
     return;
   }
-  fillForm({
-    ...readFormSettings(),
-    ...pickPresetSettingsForLoad(preset),
-    currentPresetId: preset.id,
-    modelPresets
-  });
-  currentPresetId = preset.id;
-  await saveSettings("Preset loaded.");
-});
+  try {
+    isLoadingPreset = true;
+    fillForm({
+      ...readFormSettings(),
+      ...pickPresetSettingsForLoad(preset),
+      currentPresetId: preset.id,
+      modelPresets
+    });
+    currentPresetId = preset.id;
+    presetName.value = preset.name || "";
+    await saveSettings("Preset loaded.", { includePresetState: true });
+  } finally {
+    isLoadingPreset = false;
+  }
+}
 
 document.querySelector("#delete-preset").addEventListener("click", async () => {
   const preset = modelPresets.find((item) => item.id === presetSelect.value);
@@ -227,11 +248,19 @@ async function loadSettings() {
   };
 
   modelPresets = Array.isArray(settings.modelPresets) ? settings.modelPresets : [];
-  currentPresetId = settings.currentPresetId || "";
+  currentPresetId = modelPresets.some((item) => item.id === settings.currentPresetId) ? settings.currentPresetId : "";
+  const currentPreset = modelPresets.find((item) => item.id === currentPresetId);
+  const displaySettings = currentPreset
+    ? {
+        ...settings,
+        ...pickPresetSettingsForLoad(currentPreset),
+        currentPresetId
+      }
+    : settings;
   renderPresetOptions();
   presetSelect.value = currentPresetId;
   presetName.value = modelPresets.find((item) => item.id === currentPresetId)?.name || "";
-  fillForm(settings);
+  fillForm(displaySettings);
 }
 
 function fillForm(settings) {
@@ -278,8 +307,13 @@ function readFormSettings() {
   return settings;
 }
 
-async function saveSettings(message) {
-  await chrome.storage.sync.set(readFormSettings());
+async function saveSettings(message, options = {}) {
+  const settings = readFormSettings();
+  if (!options.includePresetState) {
+    delete settings.currentPresetId;
+    delete settings.modelPresets;
+  }
+  await chrome.storage.sync.set(settings);
   status.textContent = message;
   setTimeout(() => {
     if (status.textContent === message) {
@@ -289,7 +323,11 @@ async function saveSettings(message) {
 }
 
 function renderPresetOptions() {
-  presetSelect.innerHTML = '<option value="">No preset</option>';
+  presetSelect.innerHTML = "";
+  if (modelPresets.length === 0) {
+    presetSelect.innerHTML = '<option value="">New Preset</option>';
+    return;
+  }
   modelPresets.forEach((preset) => {
     const option = document.createElement("option");
     option.value = preset.id;
@@ -464,6 +502,12 @@ function stripPresetSecrets(presets) {
 
 function createPresetId() {
   return `preset-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function clearCurrentPreset() {
+  currentPresetId = "";
+  presetSelect.value = "";
+  presetName.value = "";
 }
 
 function isPresetControl(target) {

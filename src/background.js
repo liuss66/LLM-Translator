@@ -15,7 +15,8 @@ const DEFAULT_SETTINGS = {
   thinkingEffort: "medium",
   thinkingBudgetTokens: 0,
   thinkingFieldPreset: "auto",
-  thinkingRequestFields: "thinking.type\nenable_thinking\nchat_template_kwargs.enable_thinking",
+  thinkingRequestFields:
+    "thinking.type\nenable_thinking\nchat_template_kwargs.enable_thinking\nextra_body.enable_thinking\nextra_body.chat_template_kwargs.enable_thinking",
   currentPresetId: "",
   modelPresets: [],
   systemPrompt:
@@ -27,7 +28,6 @@ const MODEL_SETTING_KEYS = [
   "apiKey",
   "textModel",
   "visionModel",
-  "targetLanguage",
   "enableThinking",
   "thinkingEffort",
   "thinkingBudgetTokens",
@@ -251,19 +251,24 @@ async function handleMessage(message, sender) {
 
   if (message?.type === "ask-last-screenshot") {
     const startedAt = Date.now();
+    const metrics = createModelMetrics();
     const answer = await askLastScreenshot(message.question || "", message.history || [], async (partial) => {
       if (!message.requestId) return;
+      const output = modelOutputPayload(partial, metrics);
       chrome.runtime
         .sendMessage({
           type: "chat-stream-updated",
           requestId: message.requestId,
-          answer: partial,
+          answer: output.answer,
+          reasoning: output.reasoning,
+          metrics: snapshotMetrics(metrics),
           startedAt,
           isStreaming: true
         })
         .catch(() => {});
-    });
-    return { ok: true, answer, elapsedMs: Date.now() - startedAt };
+    }, metrics);
+    const output = modelOutputPayload(answer, metrics);
+    return { ok: true, answer: output.answer, reasoning: output.reasoning, metrics: snapshotMetrics(metrics), elapsedMs: Date.now() - startedAt };
   }
 
   if (message?.type === "region-selected") {
@@ -421,21 +426,28 @@ async function translateSelection(tabId, rawText) {
   });
 
   const settings = await getSettings();
+  const metrics = createModelMetrics();
   const translation = await translateText(settings, text, async (partial) => {
+    const output = modelOutputPayload(partial, metrics);
     await showResult(tabId, {
       title: `Translating to ${settings.targetLanguage}...`,
       source: text,
-      translation: removeReasoningBlocks(partial, settings),
+      translation: output.answer,
+      reasoning: output.reasoning,
       startedAt,
+      metrics: snapshotMetrics(metrics),
       isStreaming: true
     });
-  });
+  }, metrics);
+  const output = modelOutputPayload(translation, metrics);
   await showResult(tabId, {
     title: `Translated to ${settings.targetLanguage}`,
     source: text,
-    translation: removeReasoningBlocks(translation, settings),
+    translation: output.answer,
+    reasoning: output.reasoning,
     startedAt,
-    elapsedMs: Date.now() - startedAt
+    elapsedMs: Date.now() - startedAt,
+    metrics: snapshotMetrics(metrics)
   });
 }
 
@@ -512,30 +524,37 @@ async function translateScreenshotImage(tabId, imageDataUrl, options) {
     startedAt: options.startedAt,
     isStreaming: true
   });
+  const metrics = createModelMetrics();
   const translation = await translateImage(settings, preparedImage.dataUrl, async (partial) => {
+    const output = modelOutputPayload(partial, metrics);
     await showResult(tabId, {
       title: `OCR translating to ${settings.targetLanguage}...`,
       source: options.source,
-      translation: removeReasoningBlocks(partial, settings),
+      translation: output.answer,
+      reasoning: output.reasoning,
       imageUrl: preparedImage.dataUrl,
       originalImageUrl: settings.showInputImage ? options.originalImageUrl : "",
       showInputImage: settings.showInputImage,
       imageInfo,
       startedAt: options.startedAt,
+      metrics: snapshotMetrics(metrics),
       isStreaming: true
     });
-  });
+  }, metrics);
 
+  const output = modelOutputPayload(translation, metrics);
   await showResult(tabId, {
     title: `OCR translated to ${settings.targetLanguage}`,
     source: options.source,
-    translation: removeReasoningBlocks(translation, settings),
+    translation: output.answer,
+    reasoning: output.reasoning,
     imageUrl: preparedImage.dataUrl,
     originalImageUrl: settings.showInputImage ? options.originalImageUrl : "",
     showInputImage: settings.showInputImage,
     imageInfo,
     startedAt: options.startedAt,
-    elapsedMs: Date.now() - options.startedAt
+    elapsedMs: Date.now() - options.startedAt,
+    metrics: snapshotMetrics(metrics)
   });
 }
 
@@ -665,7 +684,7 @@ async function hideFloatingPanel(tabId) {
   }
 }
 
-async function translateText(settings, text, onUpdate) {
+async function translateText(settings, text, onUpdate, metrics = createModelMetrics()) {
   const messages = [
     { role: "system", content: settings.systemPrompt },
     {
@@ -674,10 +693,10 @@ async function translateText(settings, text, onUpdate) {
     }
   ];
 
-  return callModel(settings, settings.textModel, messages, { stream: Boolean(onUpdate), onDelta: onUpdate });
+  return callModel(settings, settings.textModel, messages, { stream: Boolean(onUpdate), onDelta: onUpdate, metrics });
 }
 
-async function translateImage(settings, imageDataUrl, onUpdate) {
+async function translateImage(settings, imageDataUrl, onUpdate, metrics = createModelMetrics()) {
   const outputInstruction = settings.showOcrResult
     ? "Return Markdown with two sections: OCR Text and Translation."
     : "Return only the translated text in Markdown. Do not include an OCR Text section or the source text.";
@@ -704,10 +723,10 @@ async function translateImage(settings, imageDataUrl, onUpdate) {
     }
   ];
 
-  return callModel(settings, settings.visionModel, messages, { stream: Boolean(onUpdate), onDelta: onUpdate });
+  return callModel(settings, settings.visionModel, messages, { stream: Boolean(onUpdate), onDelta: onUpdate, metrics });
 }
 
-async function askLastScreenshot(question, history, onUpdate) {
+async function askLastScreenshot(question, history, onUpdate, metrics = createModelMetrics()) {
   const trimmedQuestion = question.trim();
   if (!trimmedQuestion) {
     throw new Error("Question is empty.");
@@ -752,10 +771,11 @@ async function askLastScreenshot(question, history, onUpdate) {
   const answer = await callModel(settings, settings.visionModel, messages, {
     stream: Boolean(onUpdate),
     onDelta: async (partial) => {
-      await onUpdate?.(removeReasoningBlocks(partial, settings));
-    }
+      await onUpdate?.(partial);
+    },
+    metrics
   });
-  return removeReasoningBlocks(answer, settings);
+  return answer;
 }
 
 async function testModel(rawSettings) {
@@ -787,6 +807,8 @@ async function callModel(settings, model, messages, options = {}) {
 async function callOpenAIChatCompletions(settings, model, messages, options = {}) {
   const controller = new AbortController();
   activeModelControllers.add(controller);
+  const metrics = options.metrics || createModelMetrics();
+  startModelMetrics(metrics, messages);
   const headers = {
     "Content-Type": "application/json"
   };
@@ -801,6 +823,9 @@ async function callOpenAIChatCompletions(settings, model, messages, options = {}
   };
   if (options.stream) {
     body.stream = true;
+    if (shouldRequestStreamUsage(settings)) {
+      body.stream_options = { include_usage: true };
+    }
   }
   const appliedThinkingFields = applyThinkingSettings(settings, body, model);
 
@@ -826,18 +851,23 @@ async function callOpenAIChatCompletions(settings, model, messages, options = {}
     }
 
     if (options.stream) {
-      return readOpenAIStream(response, options.onDelta);
+      return readOpenAIStream(response, options.onDelta, metrics);
     }
 
     const data = await response.json();
-    const content = data?.choices?.[0]?.message?.content;
-    if (!content) {
+    applyOpenAIUsage(metrics, data?.usage);
+    const message = data?.choices?.[0]?.message || {};
+    const content = message.content;
+    appendReasoningText(metrics, reasoningTextFromOpenAIMessage(message));
+    if (!content && !metrics.reasoningText) {
       throw new Error("Model response did not contain translated content.");
     }
 
-    return Array.isArray(content)
+    const text = Array.isArray(content)
       ? content.map((part) => part.text || "").join("").trim()
-      : String(content).trim();
+      : String(content || "").trim();
+    finishModelMetrics(metrics, text, metrics.reasoningText);
+    return text;
   } finally {
     activeModelControllers.delete(controller);
   }
@@ -846,6 +876,8 @@ async function callOpenAIChatCompletions(settings, model, messages, options = {}
 async function callAnthropicMessages(settings, model, messages, options = {}) {
   const controller = new AbortController();
   activeModelControllers.add(controller);
+  const metrics = options.metrics || createModelMetrics();
+  startModelMetrics(metrics, messages);
   const { system, anthropicMessages } = toAnthropicMessages(withThinkingInstruction(settings, messages));
   const body = {
     model,
@@ -875,58 +907,80 @@ async function callAnthropicMessages(settings, model, messages, options = {}) {
     }
 
     if (options.stream) {
-      return readAnthropicStream(response, options.onDelta);
+      return readAnthropicStream(response, options.onDelta, metrics);
     }
 
     const data = await response.json();
+    applyAnthropicUsage(metrics, data?.usage);
     const content = data?.content;
     if (!Array.isArray(content)) {
       throw new Error("Anthropic response did not contain translated content.");
     }
 
-    return content
+    const text = content
       .filter((part) => part.type === "text")
       .map((part) => part.text || "")
       .join("")
       .trim();
+    appendReasoningText(metrics, content.filter((part) => part.type === "thinking").map((part) => part.thinking || "").join("\n\n"));
+    finishModelMetrics(metrics, text, metrics.reasoningText);
+    return text;
   } finally {
     activeModelControllers.delete(controller);
   }
 }
 
-async function readOpenAIStream(response, onDelta) {
+async function readOpenAIStream(response, onDelta, metrics) {
   let text = "";
   await readServerSentEvents(response, async (eventData) => {
     if (eventData === "[DONE]") return;
     const data = JSON.parse(eventData);
-    const content = data?.choices?.[0]?.delta?.content;
+    applyOpenAIUsage(metrics, data?.usage);
+    const choiceDelta = data?.choices?.[0]?.delta || {};
+    const reasoningDelta = reasoningTextFromOpenAIDelta(choiceDelta);
+    const content = choiceDelta.content;
     const delta = Array.isArray(content)
       ? content.map((part) => part.text || "").join("")
       : content || "";
-    if (!delta) return;
+    if (!delta && !reasoningDelta) return;
+    markFirstToken(metrics);
+    appendReasoningText(metrics, reasoningDelta);
     text += delta;
     await onDelta?.(text);
   });
-  if (!text.trim()) {
+  if (!text.trim() && !String(metrics.reasoningText || "").trim()) {
     throw new Error("Model response did not contain translated content.");
   }
-  return text.trim();
+  const finalText = text.trim();
+  finishModelMetrics(metrics, finalText, metrics.reasoningText);
+  return finalText;
 }
 
-async function readAnthropicStream(response, onDelta) {
+async function readAnthropicStream(response, onDelta, metrics) {
   let text = "";
   await readServerSentEvents(response, async (eventData) => {
     const data = JSON.parse(eventData);
-    if (data?.type !== "content_block_delta" || data?.delta?.type !== "text_delta") return;
-    const delta = data.delta.text || "";
-    if (!delta) return;
+    if (data?.type === "message_start") {
+      applyAnthropicUsage(metrics, data?.message?.usage);
+    }
+    if (data?.type === "message_delta") {
+      applyAnthropicUsage(metrics, data?.usage);
+    }
+    if (data?.type !== "content_block_delta") return;
+    const reasoningDelta = data?.delta?.type === "thinking_delta" ? data.delta.thinking || "" : "";
+    const delta = data?.delta?.type === "text_delta" ? data.delta.text || "" : "";
+    if (!delta && !reasoningDelta) return;
+    markFirstToken(metrics);
+    appendReasoningText(metrics, reasoningDelta);
     text += delta;
     await onDelta?.(text);
   });
-  if (!text.trim()) {
+  if (!text.trim() && !String(metrics.reasoningText || "").trim()) {
     throw new Error("Anthropic response did not contain translated content.");
   }
-  return text.trim();
+  const finalText = text.trim();
+  finishModelMetrics(metrics, finalText, metrics.reasoningText);
+  return finalText;
 }
 
 async function readServerSentEvents(response, onEventData) {
@@ -1072,6 +1126,224 @@ function parseExplicitThinkingValue(settings, rawValue, enableThinking) {
   return value;
 }
 
+function createModelMetrics() {
+  return {
+    requestStartedAt: 0,
+    firstTokenAt: 0,
+    finishedAt: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    reasoningTokens: 0,
+    reasoningText: "",
+    inputEstimated: false,
+    outputEstimated: false
+  };
+}
+
+function startModelMetrics(metrics, messages) {
+  metrics.requestStartedAt = Date.now();
+  metrics.firstTokenAt = 0;
+  metrics.finishedAt = 0;
+  metrics.inputTokens = estimateMessageTokens(messages);
+  metrics.outputTokens = 0;
+  metrics.reasoningTokens = 0;
+  metrics.reasoningText = "";
+  metrics.inputEstimated = true;
+  metrics.outputEstimated = false;
+}
+
+function markFirstToken(metrics) {
+  if (!metrics.firstTokenAt) {
+    metrics.firstTokenAt = Date.now();
+  }
+}
+
+function finishModelMetrics(metrics, outputText = "", reasoningText = "") {
+  metrics.finishedAt = Date.now();
+  if (!metrics.firstTokenAt && (outputText || reasoningText)) {
+    metrics.firstTokenAt = metrics.finishedAt;
+  }
+  if ((!metrics.outputTokens || metrics.outputEstimated) && (outputText || reasoningText)) {
+    metrics.reasoningTokens = estimateTextTokens(reasoningText);
+    metrics.outputTokens = estimateTextTokens(outputText) + metrics.reasoningTokens;
+    metrics.outputEstimated = true;
+  } else if (!metrics.reasoningTokens && reasoningText) {
+    metrics.reasoningTokens = estimateTextTokens(reasoningText);
+  }
+}
+
+function snapshotMetrics(metrics) {
+  if (!metrics?.requestStartedAt) return null;
+  const now = metrics.finishedAt || Date.now();
+  const durationMs = Math.max(0, now - metrics.requestStartedAt);
+  const generationMs = metrics.firstTokenAt ? Math.max(0, now - metrics.firstTokenAt) : 0;
+  const outputTokens = Number(metrics.outputTokens || 0);
+  return {
+    elapsedMs: durationMs,
+    ttftMs: metrics.firstTokenAt ? metrics.firstTokenAt - metrics.requestStartedAt : undefined,
+    tokensPerSecond: generationMs > 0 && outputTokens > 0 ? outputTokens / (generationMs / 1000) : undefined,
+    inputTokens: Number(metrics.inputTokens || 0),
+    outputTokens,
+    reasoningTokens: Number(metrics.reasoningTokens || 0),
+    inputEstimated: Boolean(metrics.inputEstimated),
+    outputEstimated: Boolean(metrics.outputEstimated)
+  };
+}
+
+function applyOpenAIUsage(metrics, usage) {
+  if (!usage) return;
+  applyUsageTokens(metrics, usage.prompt_tokens, usage.completion_tokens);
+}
+
+function applyAnthropicUsage(metrics, usage) {
+  if (!usage) return;
+  applyUsageTokens(metrics, usage.input_tokens, usage.output_tokens);
+}
+
+function shouldRequestStreamUsage(settings) {
+  const host = apiHost(settings.apiBaseUrl);
+  return host === "api.openai.com" || host.includes("openrouter.ai");
+}
+
+function applyUsageTokens(metrics, inputTokens, outputTokens) {
+  const input = Number(inputTokens);
+  if (Number.isFinite(input) && input > 0) {
+    metrics.inputTokens = input;
+    metrics.inputEstimated = false;
+  }
+  const output = Number(outputTokens);
+  if (Number.isFinite(output) && output > 0) {
+    metrics.outputTokens = output;
+    metrics.outputEstimated = false;
+  }
+}
+
+function estimateMessageTokens(messages) {
+  return messages.reduce((total, message) => total + estimateContentTokens(message.content), 0);
+}
+
+function estimateContentTokens(content) {
+  if (typeof content === "string") return estimateTextTokens(content);
+  if (!Array.isArray(content)) return 0;
+  return content.reduce((total, part) => {
+    if (part?.type === "text") {
+      return total + estimateTextTokens(part.text);
+    }
+    if (part?.type === "image_url") {
+      return total + estimateImageTokens(part.image_url?.url);
+    }
+    return total;
+  }, 0);
+}
+
+function estimateTextTokens(text) {
+  const value = String(text || "").trim();
+  if (!value) return 0;
+  const cjk = (value.match(/[\u3400-\u9fff]/g) || []).length;
+  const nonCjk = value.length - cjk;
+  return Math.max(1, Math.ceil(cjk * 0.75 + nonCjk / 4));
+}
+
+function estimateImageTokens(dataUrl) {
+  const dimensions = imageDimensionsFromDataUrl(dataUrl);
+  if (!dimensions) return 0;
+  const width = Math.max(1, dimensions.width);
+  const height = Math.max(1, dimensions.height);
+  const maxSide = Math.max(width, height);
+  const scale = maxSide > 2048 ? 2048 / maxSide : 1;
+  const scaledWidth = Math.max(1, Math.round(width * scale));
+  const scaledHeight = Math.max(1, Math.round(height * scale));
+  const shortSide = Math.min(scaledWidth, scaledHeight);
+  const detailScale = shortSide > 768 ? 768 / shortSide : 1;
+  const detailWidth = Math.max(1, Math.round(scaledWidth * detailScale));
+  const detailHeight = Math.max(1, Math.round(scaledHeight * detailScale));
+  const tiles = Math.ceil(detailWidth / 512) * Math.ceil(detailHeight / 512);
+  return 85 + tiles * 170;
+}
+
+function imageDimensionsFromDataUrl(dataUrl) {
+  const parsed = parseDataUrlSafe(dataUrl);
+  if (!parsed) return null;
+  if (parsed.mediaType === "image/png") {
+    return pngDimensions(parsed.bytes);
+  }
+  if (parsed.mediaType === "image/jpeg" || parsed.mediaType === "image/jpg") {
+    return jpegDimensions(parsed.bytes);
+  }
+  return null;
+}
+
+function parseDataUrlSafe(dataUrl) {
+  const match = /^data:([^;,]+);base64,(.+)$/i.exec(String(dataUrl || ""));
+  if (!match) return null;
+  try {
+    const binary = atob(match[2]);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+    return { mediaType: match[1].toLowerCase(), bytes };
+  } catch {
+    return null;
+  }
+}
+
+function pngDimensions(bytes) {
+  if (
+    bytes.length < 24 ||
+    bytes[0] !== 0x89 ||
+    bytes[1] !== 0x50 ||
+    bytes[2] !== 0x4e ||
+    bytes[3] !== 0x47
+  ) {
+    return null;
+  }
+  return {
+    width: readUint32BE(bytes, 16),
+    height: readUint32BE(bytes, 20)
+  };
+}
+
+function jpegDimensions(bytes) {
+  if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) return null;
+  let offset = 2;
+  while (offset + 9 < bytes.length) {
+    if (bytes[offset] !== 0xff) {
+      offset += 1;
+      continue;
+    }
+    const marker = bytes[offset + 1];
+    offset += 2;
+    while (bytes[offset] === 0xff) offset += 1;
+    if (marker === 0xd8 || marker === 0xd9 || (marker >= 0xd0 && marker <= 0xd7)) {
+      continue;
+    }
+    if (offset + 2 > bytes.length) return null;
+    const segmentLength = readUint16BE(bytes, offset);
+    if (segmentLength < 2 || offset + segmentLength > bytes.length) return null;
+    if (isJpegStartOfFrame(marker) && offset + 7 < bytes.length) {
+      return {
+        height: readUint16BE(bytes, offset + 3),
+        width: readUint16BE(bytes, offset + 5)
+      };
+    }
+    offset += segmentLength;
+  }
+  return null;
+}
+
+function isJpegStartOfFrame(marker) {
+  return marker >= 0xc0 && marker <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(marker);
+}
+
+function readUint16BE(bytes, offset) {
+  return (bytes[offset] << 8) | bytes[offset + 1];
+}
+
+function readUint32BE(bytes, offset) {
+  return bytes[offset] * 0x1000000 + ((bytes[offset + 1] << 16) | (bytes[offset + 2] << 8) | bytes[offset + 3]);
+}
+
 function shouldSendThinkingCustomFields(settings) {
   return settings.provider !== "anthropic";
 }
@@ -1098,11 +1370,11 @@ function thinkingFieldsForPreset(preset) {
     case "doubao":
       return "thinking.type";
     case "qwen-compatible":
-      return "enable_thinking\nchat_template_kwargs.enable_thinking";
+      return "enable_thinking\nchat_template_kwargs.enable_thinking\nextra_body.enable_thinking\nextra_body.chat_template_kwargs.enable_thinking";
     case "llamacpp":
-      return "chat_template_kwargs.enable_thinking";
+      return "chat_template_kwargs.enable_thinking\nextra_body.enable_thinking\nextra_body.chat_template_kwargs.enable_thinking";
     case "compatible-broad":
-      return "thinking.type\nreasoning.enabled\nreasoning.effort\nreasoning.max_tokens\nenable_thinking\nchat_template_kwargs.enable_thinking";
+      return "thinking.type\nreasoning.enabled\nreasoning.effort\nreasoning.max_tokens\nenable_thinking\nchat_template_kwargs.enable_thinking\nextra_body.enable_thinking\nextra_body.chat_template_kwargs.enable_thinking";
     default:
       return "";
   }
@@ -1116,7 +1388,7 @@ function inferThinkingRequestFields(settings, model = "") {
   if (settings.provider === "llamacpp" || isLocalApiHost(host)) {
     return host.includes("11434")
       ? ""
-      : "chat_template_kwargs.enable_thinking\nenable_thinking";
+      : "chat_template_kwargs.enable_thinking\nextra_body.enable_thinking\nextra_body.chat_template_kwargs.enable_thinking\nenable_thinking";
   }
 
   if (host === "api.openai.com") {
@@ -1141,7 +1413,7 @@ function inferThinkingRequestFields(settings, model = "") {
     host.includes("aliyuncs.com") ||
     modelName.includes("qwen")
   ) {
-    return "enable_thinking\nchat_template_kwargs.enable_thinking";
+    return "enable_thinking\nchat_template_kwargs.enable_thinking\nextra_body.enable_thinking\nextra_body.chat_template_kwargs.enable_thinking";
   }
 
   if (isOpenAIReasoningModel(modelName)) {
@@ -1355,13 +1627,86 @@ function setNestedRequestField(target, fieldPath, value) {
   cursor[keys[keys.length - 1]] = value;
 }
 
-function removeReasoningBlocks(content, settings) {
-  if (settings.enableThinking) {
-    return content;
-  }
-  return String(content || "")
-    .replace(/<think>[\s\S]*?<\/think>/gi, "")
+function modelOutputPayload(content, metrics) {
+  const parsed = splitReasoningContent(content);
+  const reasoning = [metrics?.reasoningText || "", parsed.reasoning]
+    .map((part) => String(part || "").trim())
+    .filter(Boolean)
+    .join("\n\n")
     .trim();
+  if (metrics && reasoning) {
+    metrics.reasoningTokens = estimateTextTokens(reasoning);
+  }
+  if (metrics && (!metrics.outputTokens || metrics.outputEstimated)) {
+    metrics.outputTokens = estimateTextTokens(parsed.answer) + Number(metrics.reasoningTokens || 0);
+    metrics.outputEstimated = true;
+  }
+  return {
+    answer: parsed.answer,
+    reasoning
+  };
+}
+
+function splitReasoningContent(content) {
+  const raw = String(content || "");
+  const reasoningParts = [];
+  let answer = raw.replace(/<think\b[^>]*>([\s\S]*?)<\/think>/gi, (_match, reasoning) => {
+    reasoningParts.push(String(reasoning || "").trim());
+    return "";
+  });
+
+  const openThink = answer.search(/<think\b[^>]*>/i);
+  if (openThink >= 0) {
+    const before = answer.slice(0, openThink);
+    const after = answer.slice(openThink).replace(/^<think\b[^>]*>/i, "");
+    reasoningParts.push(after.trim());
+    answer = before;
+  }
+
+  return {
+    answer: answer.trim(),
+    reasoning: reasoningParts.filter(Boolean).join("\n\n").trim()
+  };
+}
+
+function appendReasoningText(metrics, value) {
+  const text = normalizeReasoningText(value);
+  if (!text) return;
+  metrics.reasoningText = [metrics.reasoningText, text].filter(Boolean).join("");
+  metrics.reasoningTokens = estimateTextTokens(metrics.reasoningText);
+}
+
+function normalizeReasoningText(value) {
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) return value.map(normalizeReasoningText).join("");
+  if (typeof value === "object") {
+    return (
+      normalizeReasoningText(value.text) ||
+      normalizeReasoningText(value.content) ||
+      normalizeReasoningText(value.reasoning) ||
+      normalizeReasoningText(value.reasoning_content)
+    );
+  }
+  return String(value);
+}
+
+function reasoningTextFromOpenAIDelta(delta) {
+  return normalizeReasoningText(
+    delta?.reasoning_content ??
+      delta?.reasoning ??
+      delta?.reasoning_text ??
+      delta?.reasoning_details
+  );
+}
+
+function reasoningTextFromOpenAIMessage(message) {
+  return normalizeReasoningText(
+    message?.reasoning_content ??
+      message?.reasoning ??
+      message?.reasoning_text ??
+      message?.reasoning_details
+  );
 }
 
 function toAnthropicMessages(messages) {

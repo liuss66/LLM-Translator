@@ -28,7 +28,7 @@
             <label class="preset-row">
               <span>Model</span>
               <select id="model-preset">
-                <option value="">Current</option>
+                <option value="">New Preset</option>
               </select>
             </label>
             <div class="toggle-actions">
@@ -75,6 +75,10 @@
       <section class="reply-area" aria-label="Model response">
         <section class="result" aria-live="polite">
           <div id="result-image"></div>
+          <details id="result-reasoning" class="reasoning-panel" hidden>
+            <summary>Thinking</summary>
+            <div id="result-reasoning-content"></div>
+          </details>
           <div class="translation-panel">
             <div class="panel-toolbar">
               <div class="translation-panel__label">Translation</div>

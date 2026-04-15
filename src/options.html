@@ -13,12 +13,12 @@
 
       <form id="settings-form">
         <section class="settings-section">
-          <h2>Model presets</h2>
+          <h2>Model config</h2>
           <div class="preset-grid">
             <label>
               Preset
               <select id="preset-select">
-                <option value="">No preset</option>
+                <option value="">New Preset</option>
               </select>
             </label>
             <label>
@@ -28,24 +28,10 @@
           </div>
           <div class="preset-actions">
             <button type="button" id="save-preset" class="secondary">Save preset</button>
-            <button type="button" id="load-preset" class="secondary">Load preset</button>
             <button type="button" id="delete-preset" class="secondary danger">Delete preset</button>
           </div>
-        </section>
 
-        <section class="settings-section">
-          <h2>Config backup</h2>
-          <p class="section-note">导出和导入不会包含或覆盖 API Key。</p>
-          <div class="preset-actions">
-            <button type="button" id="export-settings" class="secondary">Export settings</button>
-            <button type="button" id="import-settings" class="secondary">Import settings</button>
-            <button type="button" id="restore-defaults" class="secondary danger">Restore defaults</button>
-          </div>
-          <input id="import-settings-file" type="file" accept="application/json,.json" hidden>
-        </section>
-
-        <section class="settings-section">
-          <h2>Model connection</h2>
+          <hr class="section-divider">
           <div class="settings-grid">
             <label>
               Provider
@@ -57,21 +43,13 @@
             </label>
 
             <label>
-              Target language
-              <select id="target-language-select">
-                <option value="中文">中文</option>
-                <option value="English">English</option>
-                <option value="日本語">日本語</option>
-                <option value="한국어">한국어</option>
-                <option value="Français">Français</option>
-                <option value="Deutsch">Deutsch</option>
-                <option value="Español">Español</option>
-                <option value="Русский">Русский</option>
-                <option value="Português">Português</option>
-                <option value="Italiano">Italiano</option>
-                <option value="Custom">Custom</option>
-              </select>
-              <input id="target-language-custom" name="targetLanguage" type="text" placeholder="Custom language" hidden>
+              Text model
+              <input name="textModel" type="text" placeholder="gpt-4o-mini" required>
+            </label>
+
+            <label>
+              Vision model
+              <input name="visionModel" type="text" placeholder="gpt-4o-mini" required>
             </label>
           </div>
 
@@ -85,61 +63,10 @@
             <input name="apiKey" type="password" autocomplete="off" placeholder="OpenAI/Anthropic required; llama.cpp optional">
           </label>
 
-          <div class="settings-grid">
-            <label>
-              Text model
-              <input name="textModel" type="text" placeholder="gpt-4o-mini" required>
-            </label>
-
-            <label>
-              Vision model
-              <input name="visionModel" type="text" placeholder="gpt-4o-mini" required>
-            </label>
-          </div>
-        </section>
-
-        <section class="settings-section">
-          <h2>Output and image</h2>
-          <div class="toggle-grid">
-            <label class="checkbox-row">
-              <input name="showOcrResult" type="checkbox">
-              OCR text
-            </label>
-
-            <label class="checkbox-row">
-              <input name="showInputImage" type="checkbox">
-              Input image
-            </label>
-
-            <label class="checkbox-row">
-              <input name="compressInputImage" type="checkbox">
-              Compress
-            </label>
-
-            <label class="checkbox-row">
-              <input name="cropPageMargins" type="checkbox">
-              Crop
-            </label>
-          </div>
-
-          <div class="settings-grid compact-grid">
-            <label>
-              Max edge
-              <input name="imageMaxEdge" type="number" min="320" max="4096" step="64" placeholder="1600">
-            </label>
-
-            <label>
-              JPEG quality
-              <input name="imageJpegQuality" type="number" min="0.5" max="1" step="0.01" placeholder="0.88">
-            </label>
-          </div>
-        </section>
-
-        <section class="settings-section">
-          <h2>Thinking</h2>
-          <label class="checkbox-row">
+          <label class="toggle-row">
             <input name="enableThinking" type="checkbox">
-            Enable model thinking
+            <span class="toggle-ui" aria-hidden="true"></span>
+            <span>Enable model thinking</span>
           </label>
 
           <div class="settings-grid">
@@ -180,19 +107,91 @@
             Custom thinking fields
             <textarea
               name="thinkingRequestFields"
-              rows="3"
-              placeholder="thinking.type&#10;enable_thinking&#10;chat_template_kwargs.enable_thinking"
+              rows="5"
+              placeholder="thinking.type&#10;enable_thinking&#10;chat_template_kwargs.enable_thinking&#10;extra_body.enable_thinking&#10;extra_body.chat_template_kwargs.enable_thinking"
             ></textarea>
           </label>
           <p class="section-note">Auto 会根据 URL、provider 和模型名推导字段；选择其他 preset 会覆盖自动结果；Custom 才使用上面的自定义字段。</p>
-        </section>
 
-        <section class="settings-section">
-          <h2>Prompt</h2>
+          <div class="section-title-row">
+            <h3>Prompt</h3>
+            <button type="button" id="restore-default-prompt" class="secondary">Default prompt</button>
+          </div>
           <label>
             System prompt
             <textarea name="systemPrompt" rows="6"></textarea>
           </label>
+        </section>
+
+        <section class="settings-section">
+          <h2>App config</h2>
+          <div class="settings-grid">
+            <label>
+              Target language
+              <select id="target-language-select">
+                <option value="中文">中文</option>
+                <option value="English">English</option>
+                <option value="日本語">日本語</option>
+                <option value="한국어">한국어</option>
+                <option value="Français">Français</option>
+                <option value="Deutsch">Deutsch</option>
+                <option value="Español">Español</option>
+                <option value="Русский">Русский</option>
+                <option value="Português">Português</option>
+                <option value="Italiano">Italiano</option>
+                <option value="Custom">Custom</option>
+              </select>
+              <input id="target-language-custom" name="targetLanguage" type="text" placeholder="Custom language" hidden>
+            </label>
+          </div>
+
+          <div class="toggle-grid">
+            <label class="toggle-row">
+              <input name="showOcrResult" type="checkbox">
+              <span class="toggle-ui" aria-hidden="true"></span>
+              <span>OCR text</span>
+            </label>
+
+            <label class="toggle-row">
+              <input name="showInputImage" type="checkbox">
+              <span class="toggle-ui" aria-hidden="true"></span>
+              <span>Input image</span>
+            </label>
+
+            <label class="toggle-row">
+              <input name="compressInputImage" type="checkbox">
+              <span class="toggle-ui" aria-hidden="true"></span>
+              <span>Compress</span>
+            </label>
+
+            <label class="toggle-row">
+              <input name="cropPageMargins" type="checkbox">
+              <span class="toggle-ui" aria-hidden="true"></span>
+              <span>Crop</span>
+            </label>
+          </div>
+
+          <div class="settings-grid compact-grid">
+            <label>
+              Max edge
+              <input name="imageMaxEdge" type="number" min="320" max="4096" step="64" placeholder="1600">
+            </label>
+
+            <label>
+              JPEG quality
+              <input name="imageJpegQuality" type="number" min="0.5" max="1" step="0.01" placeholder="0.88">
+            </label>
+          </div>
+
+          <hr class="section-divider">
+          <h3>Config backup</h3>
+          <p class="section-note">导出和导入不会包含或覆盖 API Key。</p>
+          <div class="preset-actions">
+            <button type="button" id="export-settings" class="secondary">Export settings</button>
+            <button type="button" id="import-settings" class="secondary">Import settings</button>
+            <button type="button" id="restore-defaults" class="secondary danger">Restore defaults</button>
+          </div>
+          <input id="import-settings-file" type="file" accept="application/json,.json" hidden>
         </section>
 
         <div class="actions">

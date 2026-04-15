@@ -334,6 +334,39 @@ header button {
   background: #ffffff;
 }
 
+.reasoning-panel,
+.chat-message__reasoning {
+  min-width: 0;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  background: #f6f8fa;
+  color: #57606a;
+}
+
+.reasoning-panel {
+  margin-bottom: 8px;
+}
+
+.reasoning-panel summary,
+.chat-message__reasoning summary {
+  cursor: pointer;
+  padding: 8px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+#result-reasoning-content,
+.chat-message__reasoning-content {
+  max-height: 180px;
+  overflow: auto;
+  padding: 0 10px 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
 .translation-panel__label {
   color: #57606a;
   font-size: 11px;
@@ -677,4 +710,15 @@ header button {
   margin: 0;
   color: #57606a;
   font-size: 12px;
+}
+
+.status-metric__label,
+.status-metric__arrow {
+  color: #57606a;
+  font-weight: 700;
+}
+
+.status-metric__value {
+  color: #1b1f23;
+  font-weight: 700;
 }

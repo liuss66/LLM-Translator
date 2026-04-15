@@ -1,6 +1,8 @@
 const image = document.querySelector("#result-image");
 const translation = document.querySelector("#result-translation");
 const copyTranslation = document.querySelector("#copy-translation");
+const resultReasoning = document.querySelector("#result-reasoning");
+const resultReasoningContent = document.querySelector("#result-reasoning-content");
 const status = document.querySelector("#status");
 const replyArea = document.querySelector(".reply-area");
 const chatSection = document.querySelector(".chat");
@@ -24,6 +26,7 @@ let currentResult = null;
 let currentImageUrl = "";
 let elapsedTimer = 0;
 let stickyStatus = "";
+let stickyStatusIsHtml = false;
 const activeChatStreams = new Map();
 
 chrome.runtime.connect({ name: "sidepanel" });
@@ -171,7 +174,11 @@ imageJpegQuality.addEventListener("change", async () => {
 
 modelPreset.addEventListener("change", async () => {
   const presetId = modelPreset.value;
-  if (!presetId) return;
+  status.textContent = "";
+  if (!presetId) {
+    chrome.runtime.openOptionsPage();
+    return;
+  }
   status.textContent = "Testing model...";
   modelPreset.disabled = true;
   try {
@@ -181,11 +188,19 @@ modelPreset.addEventListener("change", async () => {
     });
     if (!response?.ok) throw new Error(response?.error || "Model preset is unavailable.");
     status.textContent = "切换成功";
+    modelPreset.value = presetId;
   } catch (error) {
-    status.textContent = error.message || "Model preset is unavailable.";
+    const message = error.message || "Model preset is unavailable.";
     await loadSettings();
+    status.textContent = message;
   } finally {
     modelPreset.disabled = false;
+  }
+});
+
+modelPreset.addEventListener("click", () => {
+  if (modelPreset.options.length === 1 && modelPreset.options[0].value === "") {
+    chrome.runtime.openOptionsPage();
   }
 });
 
@@ -222,8 +237,8 @@ chatForm.addEventListener("submit", async (event) => {
       requestId
     });
     if (!response?.ok) throw new Error(response?.error || "Question failed.");
-    setChatMessageContent(assistantMessage, response.answer || "");
-    status.textContent = response.elapsedMs !== undefined ? `用时 ${formatDuration(response.elapsedMs)}` : "";
+    setChatMessageContent(assistantMessage, response.answer || "", { reasoning: response.reasoning || "" });
+    status.textContent = response.elapsedMs !== undefined ? `T:${formatDuration(response.elapsedMs)}` : "";
   } catch (error) {
     status.textContent = error.message || "Question failed.";
     setChatMessageContent(assistantMessage, status.textContent);
@@ -255,12 +270,17 @@ async function loadSettings() {
   imageMaxEdge.value = settings.imageMaxEdge || 1600;
   imageJpegQuality.value = settings.imageJpegQuality || 0.88;
   enableThinking.checked = Boolean(settings.enableThinking);
-  renderPresetOptions(settings.modelPresets || [], settings.currentPresetId || "");
+  renderPresetOptions(settings);
 }
 
-function renderPresetOptions(presets, currentPresetId) {
-  const currentValue = currentPresetId || "";
-  modelPreset.innerHTML = '<option value="">Current</option>';
+function renderPresetOptions(settings) {
+  const presets = settings.modelPresets || [];
+  const currentValue = resolveActivePresetId(settings, presets);
+  modelPreset.innerHTML = "";
+  if (presets.length === 0) {
+    modelPreset.innerHTML = '<option value="">New Preset</option>';
+    return;
+  }
   presets.forEach((preset) => {
     const option = document.createElement("option");
     option.value = preset.id;
@@ -268,6 +288,35 @@ function renderPresetOptions(presets, currentPresetId) {
     modelPreset.append(option);
   });
   modelPreset.value = currentValue;
+}
+
+function resolveActivePresetId(settings, presets) {
+  if (settings.currentPresetId && presets.some((preset) => preset.id === settings.currentPresetId)) {
+    return settings.currentPresetId;
+  }
+  const matched = presets.find((preset) => presetMatchesSettings(preset, settings));
+  return matched?.id || "";
+}
+
+function presetMatchesSettings(preset, settings) {
+  const keys = [
+    "provider",
+    "apiBaseUrl",
+    "textModel",
+    "visionModel",
+    "enableThinking",
+    "thinkingEffort",
+    "thinkingBudgetTokens",
+    "thinkingFieldPreset",
+    "thinkingRequestFields",
+    "systemPrompt"
+  ];
+  return keys.every((key) => normalizePresetValue(preset[key]) === normalizePresetValue(settings[key]));
+}
+
+function normalizePresetValue(value) {
+  if (typeof value === "boolean") return value ? "true" : "false";
+  return String(value ?? "").trim();
 }
 
 async function readSelectedTextWithClipboardFallback(tabId) {
@@ -359,7 +408,7 @@ async function sendAction(message, pendingText) {
     updateStopVisibility(false);
   }
   setTimeout(() => {
-    status.textContent = stickyStatus;
+    restoreStickyStatus();
   }, 1200);
 }
 
@@ -371,6 +420,10 @@ function renderResult(result) {
   renderResultStatus(result);
   copyTranslation.hidden = Boolean(result?.isStreaming || !result?.translation);
   translation.innerHTML = globalThis.LLMTranslatorMarkdown.renderMarkdown(result?.translation || "");
+  resultReasoning.hidden = !result?.reasoning;
+  resultReasoningContent.innerHTML = result?.reasoning
+    ? globalThis.LLMTranslatorMarkdown.renderMarkdown(result.reasoning)
+    : "";
   updateStopVisibility();
 
   image.innerHTML = "";
@@ -406,18 +459,20 @@ function renderResultStatus(result) {
 
   const updateStatus = () => {
     const parts = [];
-    if (result.elapsedMs !== undefined) {
-      parts.push(`用时 ${formatDuration(result.elapsedMs)}`);
-    } else if (result.startedAt) {
-      parts.push(`计时 ${formatDuration(Date.now() - new Date(result.startedAt).getTime())}`);
-    }
+    const metrics = result.metrics || {};
+    const elapsedMs =
+      metrics.elapsedMs ??
+      result.elapsedMs ??
+      (result.startedAt ? Date.now() - new Date(result.startedAt).getTime() : undefined);
+    if (elapsedMs !== undefined) parts.push(formatMetric("T", formatDuration(elapsedMs)));
+    if (metrics.ttftMs !== undefined) parts.push(formatMetric("TTFT", formatDuration(metrics.ttftMs)));
+    if (metrics.tokensPerSecond !== undefined) parts.push(formatMetric("TPS", formatRate(metrics.tokensPerSecond)));
+    const tokenSummary = formatTokenSummary(metrics);
+    if (tokenSummary) parts.push(tokenSummary);
     if (result.isStreaming) {
-      parts.push("流式输出中");
+      parts.push('<span class="status-metric__label">Stream</span>');
     }
-    if (result.imageInfo) {
-      parts.push(formatImageInfo(result.imageInfo));
-    }
-    setStatus(parts.join(" · "));
+    setStatus(parts.join(" "), { html: true });
   };
 
   updateStatus();
@@ -439,27 +494,31 @@ function formatDuration(milliseconds) {
   return `${Math.round(totalSeconds)}s`;
 }
 
-function formatImageInfo(info) {
-  const size = `${info.width}x${info.height}`;
-  const original = `${info.originalWidth}x${info.originalHeight}`;
-  const crop = formatCropInfo(info.cropInfo);
-  if (!info.compressed) return `图片 ${size} PNG${crop}`;
-  const quality = Math.round(Number(info.quality || 0) * 100);
-  const compression = original === size ? `图片 ${size} JPEG ${quality}%` : `图片 ${original} -> ${size} JPEG ${quality}%`;
-  return `${compression}${crop}`;
+function formatRate(value) {
+  const rate = Number(value || 0);
+  if (!Number.isFinite(rate) || rate <= 0) return "-";
+  if (rate < 10) return rate.toFixed(1);
+  return String(Math.round(rate));
 }
 
-function formatCropInfo(cropInfo) {
-  if (!cropInfo) return "";
-  if (!cropInfo.cropped) return cropInfo.reason ? ` · 未裁剪: ${cropInfo.reason}` : "";
-  return ` · 裁剪 ${cropInfo.originalWidth}x${cropInfo.originalHeight} -> ${cropInfo.width}x${cropInfo.height}${formatCropMargins(cropInfo)}`;
+function formatTokens(value) {
+  const tokens = Number(value || 0);
+  if (!Number.isFinite(tokens) || tokens <= 0) return "-";
+  if (tokens >= 1000) return `${(tokens / 1000).toFixed(tokens >= 10000 ? 0 : 1)}k`;
+  return `${Math.round(tokens)}`;
 }
 
-function formatCropMargins(cropInfo) {
-  const left = Number(cropInfo.left || 0);
-  const right = Number(cropInfo.right || 0);
-  if (left <= 0 && right <= 0) return "";
-  return ` (L${left}px R${right}px)`;
+function formatTokenSummary(metrics) {
+  if (metrics.inputTokens === undefined && metrics.outputTokens === undefined) return "";
+  const input = Number(metrics.inputTokens || 0);
+  const output = Number(metrics.outputTokens || 0);
+  const reasoning = Number(metrics.reasoningTokens || 0);
+  const reasoningPart = reasoning > 0 ? ` <span class="status-metric__label">R:</span><span class="status-metric__value">${formatTokens(reasoning)}</span>` : "";
+  return `<span class="status-metric__label">Tokens:</span><span class="status-metric__value">${formatTokens(input + output)}</span> <span class="status-metric__arrow">↑</span><span class="status-metric__value">${formatTokens(input)}</span><span class="status-metric__arrow">↓</span><span class="status-metric__value">${formatTokens(output)}</span>${reasoningPart}`;
+}
+
+function formatMetric(label, value) {
+  return `<span class="status-metric__label">${label}:</span><span class="status-metric__value">${value}</span>`;
 }
 
 function openImagePreview(imageUrl, originalImageUrl = "") {
@@ -508,9 +567,18 @@ function closeImagePreview() {
   document.querySelector(".image-preview")?.remove();
 }
 
-function setStatus(message) {
+function setStatus(message, options = {}) {
   stickyStatus = message || "";
-  status.textContent = stickyStatus;
+  stickyStatusIsHtml = Boolean(options.html);
+  restoreStickyStatus();
+}
+
+function restoreStickyStatus() {
+  if (stickyStatusIsHtml) {
+    status.innerHTML = stickyStatus;
+  } else {
+    status.textContent = stickyStatus;
+  }
 }
 
 function appendChatMessage(role, content) {
@@ -523,6 +591,10 @@ function appendChatMessage(role, content) {
       <div class="chat-message__role">${role}</div>
       <button class="copy-button" type="button">Copy</button>
     </div>
+    <details class="chat-message__reasoning" hidden>
+      <summary>Thinking</summary>
+      <div class="chat-message__reasoning-content"></div>
+    </details>
     <div class="chat-message__content">${globalThis.LLMTranslatorMarkdown.renderMarkdown(
       content
     )}</div>
@@ -540,9 +612,9 @@ function appendChatMessage(role, content) {
 function updateChatStream(message) {
   const element = activeChatStreams.get(message.requestId);
   if (!element) return;
-  setChatMessageContent(element, message.answer || "", { showCopy: false });
+  setChatMessageContent(element, message.answer || "", { showCopy: false, reasoning: message.reasoning || "" });
   if (message.startedAt && message.elapsedMs === undefined) {
-    status.textContent = `计时 ${formatDuration(Date.now() - new Date(message.startedAt).getTime())} · 流式输出中`;
+    status.textContent = `T:${formatDuration(Date.now() - new Date(message.startedAt).getTime())} Stream`;
   }
   updateStopVisibility();
 }
@@ -556,9 +628,15 @@ function updateStopVisibility(forceVisible) {
   stopAction.disabled = false;
 }
 
-function setChatMessageContent(message, content, { showCopy = true } = {}) {
+function setChatMessageContent(message, content, { showCopy = true, reasoning = "" } = {}) {
   const contentElement = message.querySelector(".chat-message__content");
   contentElement.innerHTML = globalThis.LLMTranslatorMarkdown.renderMarkdown(content || "");
+  const reasoningElement = message.querySelector(".chat-message__reasoning");
+  const reasoningContent = message.querySelector(".chat-message__reasoning-content");
+  if (reasoningElement && reasoningContent) {
+    reasoningElement.hidden = !reasoning;
+    reasoningContent.innerHTML = reasoning ? globalThis.LLMTranslatorMarkdown.renderMarkdown(reasoning) : "";
+  }
   message.dataset.copyText = content || "";
   message.querySelector(".copy-button").hidden = !showCopy || !content;
   const lastHistoryItem = chatHistory[chatHistory.length - 1];

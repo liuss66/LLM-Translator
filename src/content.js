@@ -67,6 +67,10 @@
           </div>
         </div>
         <div class="llmt-panel__image-wrap"></div>
+        <details class="llmt-panel__reasoning" hidden>
+          <summary>Thinking</summary>
+          <div class="llmt-panel__reasoning-content"></div>
+        </details>
         <div class="llmt-panel__translation-wrap">
           <div class="llmt-panel__translation-label">Translation</div>
           <div class="llmt-panel__translation"></div>
@@ -85,9 +89,17 @@
 
     resultPanel.querySelector(".llmt-panel__title").innerHTML =
       'LLM Translator <span class="brand-mark">@Liuss</span>';
-    resultPanel.querySelector(".llmt-panel__meta").textContent = formatMeta(payload);
+    resultPanel.querySelector(".llmt-panel__meta").innerHTML = formatMeta(payload);
     resultPanel.querySelector(".llmt-panel__translation").innerHTML =
       globalThis.LLMTranslatorMarkdown.renderMarkdown(payload.translation || "");
+    const reasoning = resultPanel.querySelector(".llmt-panel__reasoning");
+    const reasoningContent = resultPanel.querySelector(".llmt-panel__reasoning-content");
+    reasoning.hidden = !payload.reasoning;
+    if (payload.reasoning) {
+      reasoningContent.innerHTML = globalThis.LLMTranslatorMarkdown.renderMarkdown(payload.reasoning);
+    } else {
+      reasoningContent.textContent = "";
+    }
 
     const imageWrap = resultPanel.querySelector(".llmt-panel__image-wrap");
     imageWrap.innerHTML = "";
@@ -105,21 +117,20 @@
 
   function formatMeta(payload) {
     const parts = [];
-    if (payload.elapsedMs !== undefined) {
-      parts.push(`用时 ${formatDuration(payload.elapsedMs)}`);
-    } else if (payload.startedAt) {
-      parts.push("计时中");
-    }
+    const metrics = payload.metrics || {};
+    const elapsedMs =
+      metrics.elapsedMs ??
+      payload.elapsedMs ??
+      (payload.startedAt ? Date.now() - new Date(payload.startedAt).getTime() : undefined);
+    if (elapsedMs !== undefined) parts.push(formatMetric("T", formatDuration(elapsedMs)));
+    if (metrics.ttftMs !== undefined) parts.push(formatMetric("TTFT", formatDuration(metrics.ttftMs)));
+    if (metrics.tokensPerSecond !== undefined) parts.push(formatMetric("TPS", formatRate(metrics.tokensPerSecond)));
+    const tokenSummary = formatTokenSummary(metrics);
+    if (tokenSummary) parts.push(tokenSummary);
     if (payload.isStreaming) {
-      parts.push("流式输出中");
+      parts.push('<span class="llmt-meta__label">Stream</span>');
     }
-    if (payload.imageInfo?.cropInfo?.cropped) {
-      const crop = payload.imageInfo.cropInfo;
-      parts.push(`裁剪 ${crop.originalWidth}x${crop.originalHeight} -> ${crop.width}x${crop.height}${formatCropMargins(crop)}`);
-    } else if (payload.imageInfo?.cropInfo?.reason) {
-      parts.push(`未裁剪: ${payload.imageInfo.cropInfo.reason}`);
-    }
-    return parts.join(" · ");
+    return parts.join(" ");
   }
 
   function formatDuration(milliseconds) {
@@ -128,11 +139,34 @@
     return `${Math.round(totalSeconds)}s`;
   }
 
-  function formatCropMargins(cropInfo) {
-    const left = Number(cropInfo.left || 0);
-    const right = Number(cropInfo.right || 0);
-    if (left <= 0 && right <= 0) return "";
-    return ` (L${left}px R${right}px)`;
+  function formatRate(value) {
+    const rate = Number(value || 0);
+    if (!Number.isFinite(rate) || rate <= 0) return "-";
+    if (rate < 10) return rate.toFixed(1);
+    return String(Math.round(rate));
+  }
+
+  function formatTokens(value) {
+    const tokens = Number(value || 0);
+    if (!Number.isFinite(tokens) || tokens <= 0) return "-";
+    if (tokens >= 1000) return `${(tokens / 1000).toFixed(tokens >= 10000 ? 0 : 1)}k`;
+    return `${Math.round(tokens)}`;
+  }
+
+  function formatTokenSummary(metrics) {
+    if (metrics.inputTokens === undefined && metrics.outputTokens === undefined) return "";
+    const input = Number(metrics.inputTokens || 0);
+    const output = Number(metrics.outputTokens || 0);
+    const reasoning = Number(metrics.reasoningTokens || 0);
+    const total = formatTokens(input + output);
+    const up = formatTokens(input);
+    const down = formatTokens(output);
+    const reasoningPart = reasoning > 0 ? ` <span class="llmt-meta__label">R:</span><span class="llmt-meta__value">${formatTokens(reasoning)}</span>` : "";
+    return `<span class="llmt-meta__label">Tokens:</span><span class="llmt-meta__value">${total}</span> <span class="llmt-meta__arrow">↑</span><span class="llmt-meta__value">${up}</span><span class="llmt-meta__arrow">↓</span><span class="llmt-meta__value">${down}</span>${reasoningPart}`;
+  }
+
+  function formatMetric(label, value) {
+    return `<span class="llmt-meta__label">${label}:</span><span class="llmt-meta__value">${value}</span>`;
   }
 
   function hideResultPanel({ dismissCurrentRun = false } = {}) {
