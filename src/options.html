@@ -32,26 +32,14 @@
           </div>
 
           <hr class="section-divider">
-          <div class="settings-grid">
-            <label>
-              Provider
-              <select name="provider">
-                <option value="openai">OpenAI-compatible</option>
-                <option value="anthropic">Anthropic</option>
-                <option value="llamacpp">llama.cpp server</option>
-              </select>
-            </label>
-
-            <label>
-              Text model
-              <input name="textModel" type="text" placeholder="gpt-4o-mini" required>
-            </label>
-
-            <label>
-              Vision model
-              <input name="visionModel" type="text" placeholder="gpt-4o-mini" required>
-            </label>
-          </div>
+          <label>
+            Provider
+            <select name="provider">
+              <option value="openai">OpenAI-compatible</option>
+              <option value="anthropic">Anthropic</option>
+              <option value="llamacpp">llama.cpp server</option>
+            </select>
+          </label>
 
           <label>
             API Base URL
@@ -62,6 +50,24 @@
             API Key
             <input name="apiKey" type="password" autocomplete="off" placeholder="OpenAI/Anthropic required; llama.cpp optional">
           </label>
+
+          <div class="model-row">
+            <button type="button" id="fetch-models" class="secondary" title="Fetch model list from /models endpoint">Fetch</button>
+            <label class="model-field">
+              Text model
+              <select name="textModel" class="model-select" required>
+                <option value="">-- select or type --</option>
+              </select>
+              <input name="textModelInput" type="text" class="model-input" placeholder="gpt-4o-mini" hidden>
+            </label>
+            <label class="model-field">
+              Vision model
+              <select name="visionModel" class="model-select" required>
+                <option value="">-- select or type --</option>
+              </select>
+              <input name="visionModelInput" type="text" class="model-input" placeholder="gpt-4o-mini" hidden>
+            </label>
+          </div>
 
           <label class="toggle-row">
             <input name="enableThinking" type="checkbox">

@@ -43,10 +43,15 @@ const presetName = document.querySelector("#preset-name");
 const importSettingsFile = document.querySelector("#import-settings-file");
 const targetLanguageSelect = document.querySelector("#target-language-select");
 const targetLanguageCustom = document.querySelector("#target-language-custom");
+const textModelSelect = form.elements.textModel;
+const visionModelSelect = form.elements.visionModel;
+const textModelInput = form.elements.textModelInput;
+const visionModelInput = form.elements.visionModelInput;
 let saveTimer;
 let modelPresets = [];
 let currentPresetId = "";
 let isLoadingPreset = false;
+let fetchedModels = [];
 const EXPORT_VERSION = 1;
 const IMPORTABLE_SETTING_KEYS = Object.keys(DEFAULT_SETTINGS).filter((key) => key !== "apiKey");
 const TARGET_LANGUAGE_OPTIONS = Array.from(targetLanguageSelect.options)
@@ -54,19 +59,13 @@ const TARGET_LANGUAGE_OPTIONS = Array.from(targetLanguageSelect.options)
   .filter((value) => value !== "Custom");
 const providerDefaults = {
   openai: {
-    apiBaseUrl: "https://api.openai.com/v1",
-    textModel: "gpt-4o-mini",
-    visionModel: "gpt-4o-mini"
+    apiBaseUrl: "https://api.openai.com/v1"
   },
   anthropic: {
-    apiBaseUrl: "https://api.anthropic.com/v1",
-    textModel: "claude-sonnet-4-20250514",
-    visionModel: "claude-sonnet-4-20250514"
+    apiBaseUrl: "https://api.anthropic.com/v1"
   },
   llamacpp: {
-    apiBaseUrl: "http://127.0.0.1:8080/v1",
-    textModel: "local-model",
-    visionModel: "local-model"
+    apiBaseUrl: "http://127.0.0.1:8080/v1"
   }
 };
 loadSettings();
@@ -74,9 +73,10 @@ loadSettings();
 form.elements.provider.addEventListener("change", async () => {
   const defaults = providerDefaults[form.elements.provider.value];
   form.elements.apiBaseUrl.value = defaults.apiBaseUrl;
-  form.elements.textModel.value = defaults.textModel;
-  form.elements.visionModel.value = defaults.visionModel;
-  await saveSettings("Provider saved.");
+  // Clear model fields and fetched models when switching provider
+  clearModelSelectors();
+  fetchedModels = [];
+  await saveSettings("Provider changed.");
 });
 
 form.addEventListener("change", async (event) => {
@@ -98,6 +98,123 @@ form.addEventListener("submit", async (event) => {
   event.preventDefault();
   const presetId = await saveCurrentModelPreset();
   await saveSettings(presetId ? "Settings and preset saved." : "Saved.");
+});
+
+document.querySelector("#fetch-models").addEventListener("click", async () => {
+  const apiBaseUrl = form.elements.apiBaseUrl.value.trim();
+  const apiKey = form.elements.apiKey.value.trim();
+  if (!apiBaseUrl) {
+    status.textContent = "Please enter API Base URL first.";
+    return;
+  }
+  status.textContent = "Fetching models...";
+  const fetchBtn = document.querySelector("#fetch-models");
+  fetchBtn.disabled = true;
+  try {
+    const normalizedBaseUrl = apiBaseUrl.replace(/\/+$/, "");
+    const headers = { "Content-Type": "application/json" };
+    if (apiKey) {
+      headers["Authorization"] = `Bearer ${apiKey}`;
+    }
+    const response = await fetch(`${normalizedBaseUrl}/models`, {
+      headers,
+      signal: AbortSignal.timeout(10000)
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    const data = await response.json();
+    const models = (data.data || []).map((m) => m.id).filter(Boolean);
+    if (models.length === 0) {
+      status.textContent = "No models returned from API.";
+      return;
+    }
+    fetchedModels = models;
+    populateModelSelects(models);
+    status.textContent = `Found ${models.length} models.`;
+    setTimeout(() => {
+      if (status.textContent.startsWith("Found")) status.textContent = "";
+    }, 2000);
+  } catch (error) {
+    status.textContent = `Fetch failed: ${error.message}`;
+    fetchedModels = [];
+    populateModelSelects([]);
+  } finally {
+    fetchBtn.disabled = false;
+  }
+});
+
+function populateModelSelects(models) {
+  const savedTextModel = form.elements.textModel.value || "";
+  const savedVisionModel = form.elements.visionModel.value || "";
+
+  textModelSelect.innerHTML = "";
+  visionModelSelect.innerHTML = "";
+
+  if (models.length === 0) {
+    // No models fetched, show text inputs
+    textModelSelect.hidden = true;
+    textModelInput.hidden = false;
+    visionModelSelect.hidden = true;
+    visionModelInput.hidden = false;
+    return;
+  }
+
+  // Show selects, hide inputs
+  textModelSelect.hidden = false;
+  textModelInput.hidden = true;
+  visionModelSelect.hidden = false;
+  visionModelInput.hidden = true;
+
+  // Add placeholder option
+  addOption(textModelSelect, "", "-- select --");
+  addOption(visionModelSelect, "", "-- select --");
+
+  // Add fetched models
+  for (const model of models) {
+    addOption(textModelSelect, model, model);
+    addOption(visionModelSelect, model, model);
+  }
+
+  // Restore saved values if they exist in the list
+  if (savedTextModel && models.includes(savedTextModel)) {
+    textModelSelect.value = savedTextModel;
+  }
+  if (savedVisionModel && models.includes(savedVisionModel)) {
+    visionModelSelect.value = savedVisionModel;
+  }
+}
+
+function addOption(select, value, label) {
+  const option = document.createElement("option");
+  option.value = value;
+  option.textContent = label;
+  select.append(option);
+}
+
+function clearModelSelectors() {
+  textModelSelect.innerHTML = '<option value="">-- select or type --</option>';
+  visionModelSelect.innerHTML = '<option value="">-- select or type --</option>';
+  textModelSelect.hidden = true;
+  textModelInput.hidden = false;
+  textModelInput.value = "";
+  visionModelSelect.hidden = true;
+  visionModelInput.hidden = false;
+  visionModelInput.value = "";
+  fetchedModels = [];
+}
+
+// Model select -> hidden input sync
+textModelSelect.addEventListener("change", () => {
+  if (textModelSelect.value) {
+    textModelInput.value = textModelSelect.value;
+  }
+});
+
+visionModelSelect.addEventListener("change", () => {
+  if (visionModelSelect.value) {
+    visionModelInput.value = visionModelSelect.value;
+  }
 });
 
 document.querySelector("#test-model").addEventListener("click", async () => {
@@ -173,7 +290,7 @@ document.querySelector("#save-preset").addEventListener("click", async () => {
 async function saveCurrentModelPreset() {
   const existingId = currentPresetId;
   const id = existingId || createPresetId();
-  const name = presetName.value.trim() || form.elements.textModel.value.trim() || "Unnamed";
+  const name = presetName.value.trim() || readFormSettings().textModel || "Unnamed";
   if (!existingId && name === "Unnamed") {
     return "";
   }
@@ -265,6 +382,8 @@ async function loadSettings() {
 
 function fillForm(settings) {
   for (const [key, value] of Object.entries(settings)) {
+    // Skip the hidden input fields
+    if (key === "textModelInput" || key === "visionModelInput") continue;
     const field = form.elements[key];
     if (field?.type === "checkbox") {
       field.checked = Boolean(value);
@@ -273,6 +392,19 @@ function fillForm(settings) {
     }
   }
   setTargetLanguageValue(settings.targetLanguage);
+
+  // After setting values, check if we have fetched models to show select vs input
+  if (fetchedModels.length > 0) {
+    populateModelSelects(fetchedModels);
+  } else {
+    // Default to text inputs
+    textModelSelect.hidden = true;
+    textModelInput.hidden = false;
+    visionModelSelect.hidden = true;
+    visionModelInput.hidden = false;
+    textModelInput.value = settings.textModel || "";
+    visionModelInput.value = settings.visionModel || "";
+  }
 }
 
 function readFormSettings() {
@@ -289,7 +421,18 @@ function readFormSettings() {
           key !== "currentPresetId" &&
           key !== "modelPresets"
       )
-      .map((key) => [key, String(data.get(key) || "").trim()])
+      .map((key) => {
+        if (key === "textModel") {
+          // Use input field value when select is hidden
+          const value = !textModelSelect.hidden ? data.get(key) : textModelInput.value;
+          return [key, String(value || "").trim()];
+        }
+        if (key === "visionModel") {
+          const value = !visionModelSelect.hidden ? data.get(key) : visionModelInput.value;
+          return [key, String(value || "").trim()];
+        }
+        return [key, String(data.get(key) || "").trim()];
+      })
   );
   settings.showOcrResult = form.elements.showOcrResult.checked;
   settings.showInputImage = form.elements.showInputImage.checked;

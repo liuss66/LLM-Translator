@@ -225,3 +225,28 @@ button.danger {
 #status {
   color: #57606a;
 }
+
+.model-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.model-row #fetch-models {
+  flex: 0 0 auto;
+  padding: 10px 14px;
+  min-width: 80px;
+  height: 42px;
+  align-self: flex-end;
+}
+
+.model-row label {
+  flex: 1;
+  min-width: 180px;
+}
+
+.model-select,
+.model-input {
+  width: 100%;
+}
