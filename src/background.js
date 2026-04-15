@@ -14,11 +14,12 @@ const DEFAULT_SETTINGS = {
   enableThinking: false,
   thinkingEffort: "medium",
   thinkingBudgetTokens: 0,
+  thinkingFieldPreset: "auto",
   thinkingRequestFields: "thinking.type\nenable_thinking\nchat_template_kwargs.enable_thinking",
   currentPresetId: "",
   modelPresets: [],
   systemPrompt:
-    "You are a precise translation assistant. Preserve meaning, technical terms, formatting, and numbers. Return only the translation unless OCR text is requested."
+    "You are a precise translation assistant. Preserve meaning, technical terms, formatting, and numbers. If you encounter images, charts, or other non-translatable content, insert a clear placeholder such as [此处应插入图 X.X] and briefly describe the image content in brackets if needed for context. Always return only the final translated text unless OCR extraction is explicitly requested."
 };
 const MODEL_SETTING_KEYS = [
   "provider",
@@ -30,6 +31,7 @@ const MODEL_SETTING_KEYS = [
   "enableThinking",
   "thinkingEffort",
   "thinkingBudgetTokens",
+  "thinkingFieldPreset",
   "thinkingRequestFields",
   "systemPrompt"
 ];
@@ -617,6 +619,7 @@ async function readSettings() {
     128000,
     DEFAULT_SETTINGS.thinkingBudgetTokens
   );
+  settings.thinkingFieldPreset = normalizeThinkingFieldPreset(settings.thinkingFieldPreset);
   settings.thinkingRequestFields =
     typeof settings.thinkingRequestFields === "string"
       ? settings.thinkingRequestFields.trim()
@@ -799,7 +802,7 @@ async function callOpenAIChatCompletions(settings, model, messages, options = {}
   if (options.stream) {
     body.stream = true;
   }
-  const appliedThinkingFields = applyThinkingSettings(settings, body);
+  const appliedThinkingFields = applyThinkingSettings(settings, body, model);
 
   try {
     const response = await fetch(`${settings.apiBaseUrl}/chat/completions`, {
@@ -813,7 +816,7 @@ async function callOpenAIChatCompletions(settings, model, messages, options = {}
       const detail = await response.text();
       if (appliedThinkingFields && shouldRetryWithoutThinkingFields(response.status, detail)) {
         return callOpenAIChatCompletions(
-          { ...settings, thinkingRequestFields: "" },
+          { ...settings, thinkingFieldPreset: "none", thinkingRequestFields: "" },
           model,
           messages,
           options
@@ -978,9 +981,9 @@ function withThinkingInstruction(settings, messages) {
   return [{ role: "system", content: instruction }, ...nextMessages];
 }
 
-function applyThinkingSettings(settings, body) {
+function applyThinkingSettings(settings, body, model = "") {
   const enableThinking = Boolean(settings.enableThinking);
-  const fieldPaths = parseThinkingRequestFields(settings.thinkingRequestFields);
+  const fieldPaths = resolveThinkingRequestFields(settings, model);
   if (settings.provider === "anthropic" || fieldPaths.length === 0 || !shouldSendThinkingCustomFields(settings)) {
     return false;
   }
@@ -1071,6 +1074,105 @@ function parseExplicitThinkingValue(settings, rawValue, enableThinking) {
 
 function shouldSendThinkingCustomFields(settings) {
   return settings.provider !== "anthropic";
+}
+
+function resolveThinkingRequestFields(settings, model = "") {
+  const preset = normalizeThinkingFieldPreset(settings.thinkingFieldPreset);
+  if (preset === "custom") {
+    return parseThinkingRequestFields(settings.thinkingRequestFields);
+  }
+  if (preset !== "auto") {
+    return parseThinkingRequestFields(thinkingFieldsForPreset(preset));
+  }
+  return parseThinkingRequestFields(inferThinkingRequestFields(settings, model));
+}
+
+function thinkingFieldsForPreset(preset) {
+  switch (preset) {
+    case "none":
+      return "";
+    case "openai-reasoning":
+      return "reasoning_effort";
+    case "openrouter":
+      return "reasoning.enabled\nreasoning.effort\nreasoning.max_tokens";
+    case "doubao":
+      return "thinking.type";
+    case "qwen-compatible":
+      return "enable_thinking\nchat_template_kwargs.enable_thinking";
+    case "llamacpp":
+      return "chat_template_kwargs.enable_thinking";
+    case "compatible-broad":
+      return "thinking.type\nreasoning.enabled\nreasoning.effort\nreasoning.max_tokens\nenable_thinking\nchat_template_kwargs.enable_thinking";
+    default:
+      return "";
+  }
+}
+
+function inferThinkingRequestFields(settings, model = "") {
+  if (settings.provider === "anthropic") return "";
+  const host = apiHost(settings.apiBaseUrl);
+  const modelName = String(model || settings.textModel || "").toLowerCase();
+
+  if (settings.provider === "llamacpp" || isLocalApiHost(host)) {
+    return host.includes("11434")
+      ? ""
+      : "chat_template_kwargs.enable_thinking\nenable_thinking";
+  }
+
+  if (host === "api.openai.com") {
+    return isOpenAIReasoningModel(modelName) ? "reasoning_effort" : "";
+  }
+
+  if (host.includes("openrouter.ai")) {
+    return "reasoning.enabled\nreasoning.effort\nreasoning.max_tokens";
+  }
+
+  if (host.includes("volces.com") || host.includes("volcengine") || modelName.includes("doubao")) {
+    return "thinking.type";
+  }
+
+  if (host.includes("deepseek.com") || modelName.includes("deepseek-reasoner")) {
+    return "";
+  }
+
+  if (
+    host.includes("siliconflow") ||
+    host.includes("dashscope") ||
+    host.includes("aliyuncs.com") ||
+    modelName.includes("qwen")
+  ) {
+    return "enable_thinking\nchat_template_kwargs.enable_thinking";
+  }
+
+  if (isOpenAIReasoningModel(modelName)) {
+    return "reasoning_effort";
+  }
+
+  return thinkingFieldsForPreset("compatible-broad");
+}
+
+function apiHost(apiBaseUrl) {
+  try {
+    return new URL(apiBaseUrl).hostname.toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+function isLocalApiHost(host) {
+  return (
+    host === "localhost" ||
+    host === "127.0.0.1" ||
+    host === "::1" ||
+    host.endsWith(".local") ||
+    /^10\./.test(host) ||
+    /^192\.168\./.test(host) ||
+    /^172\.(1[6-9]|2\d|3[0-1])\./.test(host)
+  );
+}
+
+function isOpenAIReasoningModel(modelName) {
+  return /(^|[/:_-])(gpt-5|o1|o3|o4)([/:_.-]|$)/i.test(modelName);
 }
 
 function parseThinkingRequestFields(rawFields) {
@@ -1552,4 +1654,21 @@ function normalizeThinkingEffort(value) {
   return ["none", "minimal", "low", "medium", "high", "xhigh"].includes(effort)
     ? effort
     : DEFAULT_SETTINGS.thinkingEffort;
+}
+
+function normalizeThinkingFieldPreset(value) {
+  const preset = String(value || "").trim().toLowerCase();
+  return [
+    "auto",
+    "none",
+    "openai-reasoning",
+    "openrouter",
+    "doubao",
+    "qwen-compatible",
+    "llamacpp",
+    "compatible-broad",
+    "custom"
+  ].includes(preset)
+    ? preset
+    : DEFAULT_SETTINGS.thinkingFieldPreset;
 }

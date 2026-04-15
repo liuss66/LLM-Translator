@@ -14,11 +14,12 @@ const DEFAULT_SETTINGS = {
   enableThinking: false,
   thinkingEffort: "medium",
   thinkingBudgetTokens: 0,
+  thinkingFieldPreset: "auto",
   thinkingRequestFields: "thinking.type\nenable_thinking\nchat_template_kwargs.enable_thinking",
   currentPresetId: "",
   modelPresets: [],
   systemPrompt:
-    "You are a precise translation assistant. Preserve meaning, technical terms, formatting, and numbers. Return only the translation unless OCR text is requested."
+    "You are a precise translation assistant. Preserve meaning, technical terms, formatting, and numbers. If you encounter images, charts, or other non-translatable content, insert a clear placeholder such as [此处应插入图 X.X] and briefly describe the image content in brackets if needed for context. Always return only the final translated text unless OCR extraction is explicitly requested."
 };
 const MODEL_SETTING_KEYS = [
   "provider",
@@ -30,6 +31,7 @@ const MODEL_SETTING_KEYS = [
   "enableThinking",
   "thinkingEffort",
   "thinkingBudgetTokens",
+  "thinkingFieldPreset",
   "thinkingRequestFields",
   "systemPrompt"
 ];
@@ -39,8 +41,6 @@ const status = document.querySelector("#status");
 const presetSelect = document.querySelector("#preset-select");
 const presetName = document.querySelector("#preset-name");
 const importSettingsFile = document.querySelector("#import-settings-file");
-const providerTemplate = document.querySelector("#provider-template");
-const providerTemplateSummary = document.querySelector("#provider-template-summary");
 const targetLanguageSelect = document.querySelector("#target-language-select");
 const targetLanguageCustom = document.querySelector("#target-language-custom");
 let saveTimer;
@@ -68,130 +68,6 @@ const providerDefaults = {
     visionModel: "local-model"
   }
 };
-const PROVIDER_TEMPLATES = [
-  {
-    id: "openai",
-    name: "OpenAI",
-    provider: "openai",
-    apiBaseUrl: "https://api.openai.com/v1",
-    textModel: "gpt-4o-mini",
-    visionModel: "gpt-4o-mini",
-    enableThinking: false,
-    thinkingEffort: "medium",
-    thinkingBudgetTokens: 0,
-    thinkingRequestFields: ""
-  },
-  {
-    id: "openai-reasoning",
-    name: "OpenAI Reasoning-compatible",
-    provider: "openai",
-    apiBaseUrl: "https://api.openai.com/v1",
-    textModel: "gpt-5-mini",
-    visionModel: "gpt-5-mini",
-    enableThinking: false,
-    thinkingEffort: "medium",
-    thinkingBudgetTokens: 0,
-    thinkingRequestFields: "reasoning_effort"
-  },
-  {
-    id: "anthropic",
-    name: "Anthropic",
-    provider: "anthropic",
-    apiBaseUrl: "https://api.anthropic.com/v1",
-    textModel: "claude-sonnet-4-20250514",
-    visionModel: "claude-sonnet-4-20250514",
-    enableThinking: false,
-    thinkingEffort: "medium",
-    thinkingBudgetTokens: 1024,
-    thinkingRequestFields: ""
-  },
-  {
-    id: "volcengine",
-    name: "VolcEngine Ark / Doubao",
-    provider: "openai",
-    apiBaseUrl: "https://ark.cn-beijing.volces.com/api/v3",
-    textModel: "doubao-seed-1-6-250615",
-    visionModel: "doubao-seed-1-6-vision-250615",
-    enableThinking: false,
-    thinkingEffort: "medium",
-    thinkingBudgetTokens: 0,
-    thinkingRequestFields: "thinking.type"
-  },
-  {
-    id: "openrouter",
-    name: "OpenRouter",
-    provider: "openai",
-    apiBaseUrl: "https://openrouter.ai/api/v1",
-    textModel: "openai/gpt-4o-mini",
-    visionModel: "openai/gpt-4o-mini",
-    enableThinking: false,
-    thinkingEffort: "medium",
-    thinkingBudgetTokens: 0,
-    thinkingRequestFields: "reasoning.enabled\nreasoning.effort\nreasoning.max_tokens"
-  },
-  {
-    id: "deepseek-chat",
-    name: "DeepSeek Chat",
-    provider: "openai",
-    apiBaseUrl: "https://api.deepseek.com/v1",
-    textModel: "deepseek-chat",
-    visionModel: "deepseek-chat",
-    enableThinking: false,
-    thinkingEffort: "medium",
-    thinkingBudgetTokens: 0,
-    thinkingRequestFields: ""
-  },
-  {
-    id: "deepseek-reasoner",
-    name: "DeepSeek Reasoner",
-    provider: "openai",
-    apiBaseUrl: "https://api.deepseek.com/v1",
-    textModel: "deepseek-reasoner",
-    visionModel: "deepseek-reasoner",
-    enableThinking: false,
-    thinkingEffort: "medium",
-    thinkingBudgetTokens: 0,
-    thinkingRequestFields: ""
-  },
-  {
-    id: "siliconflow",
-    name: "SiliconFlow",
-    provider: "openai",
-    apiBaseUrl: "https://api.siliconflow.cn/v1",
-    textModel: "Qwen/Qwen2.5-7B-Instruct",
-    visionModel: "Qwen/Qwen2.5-VL-7B-Instruct",
-    enableThinking: false,
-    thinkingEffort: "medium",
-    thinkingBudgetTokens: 0,
-    thinkingRequestFields: "enable_thinking\nchat_template_kwargs.enable_thinking"
-  },
-  {
-    id: "ollama",
-    name: "Ollama OpenAI-compatible",
-    provider: "openai",
-    apiBaseUrl: "http://127.0.0.1:11434/v1",
-    textModel: "qwen2.5",
-    visionModel: "llava",
-    enableThinking: false,
-    thinkingEffort: "medium",
-    thinkingBudgetTokens: 0,
-    thinkingRequestFields: ""
-  },
-  {
-    id: "llamacpp",
-    name: "llama.cpp server",
-    provider: "llamacpp",
-    apiBaseUrl: "http://127.0.0.1:8080/v1",
-    textModel: "local-model",
-    visionModel: "local-model",
-    enableThinking: false,
-    thinkingEffort: "medium",
-    thinkingBudgetTokens: 0,
-    thinkingRequestFields: "chat_template_kwargs.enable_thinking"
-  }
-];
-
-renderProviderTemplates();
 loadSettings();
 
 form.elements.provider.addEventListener("change", async () => {
@@ -245,28 +121,10 @@ document.querySelector("#open-shortcuts").addEventListener("click", () => {
   chrome.tabs.create({ url: "chrome://extensions/shortcuts" });
 });
 
-providerTemplate.addEventListener("change", () => {
-  const template = getSelectedProviderTemplate();
-  providerTemplateSummary.value = template
-    ? `${template.provider} · ${template.apiBaseUrl} · ${template.textModel}`
-    : "Provider, base URL, models, thinking fields";
-});
-
 targetLanguageSelect.addEventListener("change", async () => {
   syncTargetLanguageCustom();
   currentPresetId = "";
   await saveSettings("Saved.");
-});
-
-document.querySelector("#apply-provider-template").addEventListener("click", async () => {
-  const template = getSelectedProviderTemplate();
-  if (!template) {
-    status.textContent = "Choose a provider template first.";
-    return;
-  }
-  currentPresetId = "";
-  applyProviderTemplate(template);
-  await saveSettings(`${template.name} template applied. API Key was unchanged.`);
 });
 
 document.querySelector("#export-settings").addEventListener("click", () => {
@@ -413,6 +271,7 @@ function readFormSettings() {
   settings.enableThinking = form.elements.enableThinking.checked;
   settings.thinkingEffort = normalizeThinkingEffort(form.elements.thinkingEffort.value);
   settings.thinkingBudgetTokens = clampInteger(form.elements.thinkingBudgetTokens.value, 0, 128000, 0);
+  settings.thinkingFieldPreset = normalizeThinkingFieldPreset(form.elements.thinkingFieldPreset.value);
   settings.targetLanguage = readTargetLanguage();
   settings.currentPresetId = currentPresetId;
   settings.modelPresets = modelPresets;
@@ -437,31 +296,6 @@ function renderPresetOptions() {
     option.textContent = preset.name || preset.textModel || "Unnamed";
     presetSelect.append(option);
   });
-}
-
-function renderProviderTemplates() {
-  providerTemplate.innerHTML = '<option value="">Choose a provider template</option>';
-  PROVIDER_TEMPLATES.forEach((template) => {
-    const option = document.createElement("option");
-    option.value = template.id;
-    option.textContent = template.name;
-    providerTemplate.append(option);
-  });
-}
-
-function getSelectedProviderTemplate() {
-  return PROVIDER_TEMPLATES.find((template) => template.id === providerTemplate.value);
-}
-
-function applyProviderTemplate(template) {
-  form.elements.provider.value = template.provider;
-  form.elements.apiBaseUrl.value = template.apiBaseUrl;
-  form.elements.textModel.value = template.textModel;
-  form.elements.visionModel.value = template.visionModel;
-  form.elements.enableThinking.checked = Boolean(template.enableThinking);
-  form.elements.thinkingEffort.value = normalizeThinkingEffort(template.thinkingEffort);
-  form.elements.thinkingBudgetTokens.value = clampInteger(template.thinkingBudgetTokens, 0, 128000, 0);
-  form.elements.thinkingRequestFields.value = template.thinkingRequestFields || "";
 }
 
 function setTargetLanguageValue(value) {
@@ -563,6 +397,9 @@ function sanitizeSettingValue(key, value) {
   if (key === "thinkingBudgetTokens") {
     return clampInteger(value, 0, 128000, DEFAULT_SETTINGS.thinkingBudgetTokens);
   }
+  if (key === "thinkingFieldPreset") {
+    return normalizeThinkingFieldPreset(value);
+  }
   if (key === "modelPresets") {
     return sanitizeModelPresets(value);
   }
@@ -650,4 +487,21 @@ function normalizeThinkingEffort(value) {
   return ["none", "minimal", "low", "medium", "high", "xhigh"].includes(effort)
     ? effort
     : DEFAULT_SETTINGS.thinkingEffort;
+}
+
+function normalizeThinkingFieldPreset(value) {
+  const preset = String(value || "").trim().toLowerCase();
+  return [
+    "auto",
+    "none",
+    "openai-reasoning",
+    "openrouter",
+    "doubao",
+    "qwen-compatible",
+    "llamacpp",
+    "compatible-broad",
+    "custom"
+  ].includes(preset)
+    ? preset
+    : DEFAULT_SETTINGS.thinkingFieldPreset;
 }

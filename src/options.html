@@ -12,7 +12,7 @@
       <p>填写模型服务配置。设置保存在 Chrome 同步存储中。</p>
 
       <form id="settings-form">
-        <section class="preset-panel">
+        <section class="settings-section">
           <h2>Model presets</h2>
           <div class="preset-grid">
             <label>
@@ -33,7 +33,7 @@
           </div>
         </section>
 
-        <section class="preset-panel">
+        <section class="settings-section">
           <h2>Config backup</h2>
           <p class="section-note">导出和导入不会包含或覆盖 API Key。</p>
           <div class="preset-actions">
@@ -44,138 +44,156 @@
           <input id="import-settings-file" type="file" accept="application/json,.json" hidden>
         </section>
 
-        <section class="preset-panel">
-          <h2>Provider templates</h2>
-          <p class="section-note">模板只填写公开配置，不会修改 API Key。</p>
-          <div class="preset-grid">
+        <section class="settings-section">
+          <h2>Model connection</h2>
+          <div class="settings-grid">
             <label>
-              Template
-              <select id="provider-template">
-                <option value="">Choose a provider template</option>
+              Provider
+              <select name="provider">
+                <option value="openai">OpenAI-compatible</option>
+                <option value="anthropic">Anthropic</option>
+                <option value="llamacpp">llama.cpp server</option>
               </select>
             </label>
+
             <label>
-              Applies
-              <input id="provider-template-summary" type="text" readonly value="Provider, base URL, models, thinking fields">
+              Target language
+              <select id="target-language-select">
+                <option value="中文">中文</option>
+                <option value="English">English</option>
+                <option value="日本語">日本語</option>
+                <option value="한국어">한국어</option>
+                <option value="Français">Français</option>
+                <option value="Deutsch">Deutsch</option>
+                <option value="Español">Español</option>
+                <option value="Русский">Русский</option>
+                <option value="Português">Português</option>
+                <option value="Italiano">Italiano</option>
+                <option value="Custom">Custom</option>
+              </select>
+              <input id="target-language-custom" name="targetLanguage" type="text" placeholder="Custom language" hidden>
             </label>
           </div>
-          <div class="preset-actions">
-            <button type="button" id="apply-provider-template" class="secondary">Apply template</button>
+
+          <label>
+            API Base URL
+            <input name="apiBaseUrl" type="url" placeholder="https://api.openai.com/v1" required>
+          </label>
+
+          <label>
+            API Key
+            <input name="apiKey" type="password" autocomplete="off" placeholder="OpenAI/Anthropic required; llama.cpp optional">
+          </label>
+
+          <div class="settings-grid">
+            <label>
+              Text model
+              <input name="textModel" type="text" placeholder="gpt-4o-mini" required>
+            </label>
+
+            <label>
+              Vision model
+              <input name="visionModel" type="text" placeholder="gpt-4o-mini" required>
+            </label>
           </div>
         </section>
 
-        <label>
-          Provider
-          <select name="provider">
-            <option value="openai">OpenAI-compatible</option>
-            <option value="anthropic">Anthropic</option>
-            <option value="llamacpp">llama.cpp server</option>
-          </select>
-        </label>
+        <section class="settings-section">
+          <h2>Output and image</h2>
+          <div class="toggle-grid">
+            <label class="checkbox-row">
+              <input name="showOcrResult" type="checkbox">
+              OCR text
+            </label>
 
-        <label>
-          API Base URL
-          <input name="apiBaseUrl" type="url" placeholder="https://api.openai.com/v1" required>
-        </label>
+            <label class="checkbox-row">
+              <input name="showInputImage" type="checkbox">
+              Input image
+            </label>
 
-        <label>
-          API Key
-          <input name="apiKey" type="password" autocomplete="off" placeholder="OpenAI/Anthropic required; llama.cpp optional">
-        </label>
+            <label class="checkbox-row">
+              <input name="compressInputImage" type="checkbox">
+              Compress
+            </label>
 
-        <label>
-          Text model
-          <input name="textModel" type="text" placeholder="gpt-4o-mini" required>
-        </label>
+            <label class="checkbox-row">
+              <input name="cropPageMargins" type="checkbox">
+              Crop
+            </label>
+          </div>
 
-        <label>
-          Vision model
-          <input name="visionModel" type="text" placeholder="gpt-4o-mini" required>
-        </label>
+          <div class="settings-grid compact-grid">
+            <label>
+              Max edge
+              <input name="imageMaxEdge" type="number" min="320" max="4096" step="64" placeholder="1600">
+            </label>
 
-        <label>
-          Target language
-          <select id="target-language-select">
-            <option value="中文">中文</option>
-            <option value="English">English</option>
-            <option value="日本語">日本語</option>
-            <option value="한국어">한국어</option>
-            <option value="Français">Français</option>
-            <option value="Deutsch">Deutsch</option>
-            <option value="Español">Español</option>
-            <option value="Русский">Русский</option>
-            <option value="Português">Português</option>
-            <option value="Italiano">Italiano</option>
-            <option value="Custom">Custom</option>
-          </select>
-          <input id="target-language-custom" name="targetLanguage" type="text" placeholder="Custom language" hidden>
-        </label>
+            <label>
+              JPEG quality
+              <input name="imageJpegQuality" type="number" min="0.5" max="1" step="0.01" placeholder="0.88">
+            </label>
+          </div>
+        </section>
 
-        <label class="checkbox-row">
-          <input name="showOcrResult" type="checkbox">
-          OCR text
-        </label>
+        <section class="settings-section">
+          <h2>Thinking</h2>
+          <label class="checkbox-row">
+            <input name="enableThinking" type="checkbox">
+            Enable model thinking
+          </label>
 
-        <label class="checkbox-row">
-          <input name="showInputImage" type="checkbox">
-          Input image
-        </label>
+          <div class="settings-grid">
+            <label>
+              Field preset
+              <select name="thinkingFieldPreset">
+                <option value="auto">Auto from URL/model</option>
+                <option value="none">None</option>
+                <option value="openai-reasoning">OpenAI reasoning</option>
+                <option value="openrouter">OpenRouter reasoning</option>
+                <option value="doubao">Doubao / VolcEngine</option>
+                <option value="qwen-compatible">Qwen compatible</option>
+                <option value="llamacpp">llama.cpp</option>
+                <option value="compatible-broad">Broad compatible</option>
+                <option value="custom">Custom fields below</option>
+              </select>
+            </label>
 
-        <label class="checkbox-row">
-          <input name="compressInputImage" type="checkbox">
-          Compress image
-        </label>
+            <label>
+              Thinking effort
+              <select name="thinkingEffort">
+                <option value="none">none</option>
+                <option value="minimal">minimal</option>
+                <option value="low">low</option>
+                <option value="medium">medium</option>
+                <option value="high">high</option>
+                <option value="xhigh">xhigh</option>
+              </select>
+            </label>
+          </div>
 
-        <label class="checkbox-row">
-          <input name="cropPageMargins" type="checkbox">
-          Crop margins
-        </label>
+          <label>
+            Token budget
+            <input name="thinkingBudgetTokens" type="number" min="0" max="128000" step="128" placeholder="0">
+          </label>
 
-        <label>
-          Max edge
-          <input name="imageMaxEdge" type="number" min="320" max="4096" step="64" placeholder="1600">
-        </label>
+          <label>
+            Custom thinking fields
+            <textarea
+              name="thinkingRequestFields"
+              rows="3"
+              placeholder="thinking.type&#10;enable_thinking&#10;chat_template_kwargs.enable_thinking"
+            ></textarea>
+          </label>
+          <p class="section-note">Auto 会根据 URL、provider 和模型名推导字段；选择其他 preset 会覆盖自动结果；Custom 才使用上面的自定义字段。</p>
+        </section>
 
-        <label>
-          JPEG quality
-          <input name="imageJpegQuality" type="number" min="0.5" max="1" step="0.01" placeholder="0.88">
-        </label>
-
-        <label class="checkbox-row">
-          <input name="enableThinking" type="checkbox">
-          Enable model thinking
-        </label>
-
-        <label>
-          Thinking effort
-          <select name="thinkingEffort">
-            <option value="none">none</option>
-            <option value="minimal">minimal</option>
-            <option value="low">low</option>
-            <option value="medium">medium</option>
-            <option value="high">high</option>
-            <option value="xhigh">xhigh</option>
-          </select>
-        </label>
-
-        <label>
-          Thinking token budget
-          <input name="thinkingBudgetTokens" type="number" min="0" max="128000" step="128" placeholder="0">
-        </label>
-
-        <label>
-          Thinking request fields
-          <textarea
-            name="thinkingRequestFields"
-            rows="3"
-            placeholder="thinking.type&#10;enable_thinking&#10;chat_template_kwargs.enable_thinking"
-          ></textarea>
-        </label>
-
-        <label>
-          System prompt
-          <textarea name="systemPrompt" rows="5"></textarea>
-        </label>
+        <section class="settings-section">
+          <h2>Prompt</h2>
+          <label>
+            System prompt
+            <textarea name="systemPrompt" rows="6"></textarea>
+          </label>
+        </section>
 
         <div class="actions">
           <button type="submit">Save settings</button>

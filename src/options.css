@@ -10,7 +10,7 @@ body {
 }
 
 .page {
-  width: min(720px, calc(100vw - 32px));
+  width: min(920px, calc(100vw - 32px));
   margin: 32px auto;
 }
 
@@ -49,7 +49,7 @@ form {
   gap: 16px;
 }
 
-.preset-panel {
+.settings-section {
   display: grid;
   gap: 12px;
   padding: 14px;
@@ -62,6 +62,23 @@ form {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.compact-grid {
+  grid-template-columns: minmax(150px, 220px) minmax(150px, 220px);
+  justify-content: start;
+}
+
+.toggle-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  gap: 10px;
 }
 
 .preset-actions {
@@ -131,6 +148,9 @@ button.danger {
 
 @media (max-width: 640px) {
   .preset-grid,
+  .settings-grid,
+  .compact-grid,
+  .toggle-grid,
   .actions {
     grid-template-columns: 1fr;
   }
