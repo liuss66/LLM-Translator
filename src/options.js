@@ -129,12 +129,20 @@ function populateModelSelect(models) {
 
   if (models.length === 0) {
     modelSelect.hidden = true;
+    modelSelect.disabled = true;
+    modelSelect.required = false;
     modelInput.hidden = false;
+    modelInput.disabled = false;
+    modelInput.required = true;
     return;
   }
 
   modelSelect.hidden = false;
+  modelSelect.disabled = false;
+  modelSelect.required = true;
   modelInput.hidden = true;
+  modelInput.disabled = true;
+  modelInput.required = false;
 
   addOption(modelSelect, "", "-- select --");
 
@@ -144,6 +152,7 @@ function populateModelSelect(models) {
 
   if (savedModel && models.includes(savedModel)) {
     modelSelect.value = savedModel;
+    modelInput.value = savedModel;
   }
 }
 
@@ -340,7 +349,11 @@ function fillForm(settings) {
     populateModelSelect(fetchedModels);
   } else {
     modelSelect.hidden = true;
+    modelSelect.disabled = true;
+    modelSelect.required = false;
     modelInput.hidden = false;
+    modelInput.disabled = false;
+    modelInput.required = true;
     modelInput.value = settings.textModel || "";
   }
 }
@@ -377,6 +390,7 @@ function readFormSettings() {
   settings.thinkingEffort = normalizeThinkingEffort(form.elements.thinkingEffort.value);
   settings.thinkingBudgetTokens = clampInteger(form.elements.thinkingBudgetTokens.value, 0, 128000, 0);
   settings.thinkingFieldPreset = normalizeThinkingFieldPreset(form.elements.thinkingFieldPreset.value);
+  settings.visionModel = settings.textModel;
   settings.targetLanguage = readTargetLanguage();
   settings.currentPresetId = currentPresetId;
   settings.modelPresets = modelPresets;

@@ -1390,8 +1390,8 @@ function inferThinkingRequestFields(settings, model = "") {
     return "thinking.type";
   }
 
-  // Default fallback: most common fields for OpenAI-compatible APIs
-  return "enable_thinking\nchat_template_kwargs.enable_thinking";
+  // Default fallback: common fields for OpenAI-compatible local and hosted APIs.
+  return "enable_thinking\nchat_template_kwargs.enable_thinking\nextra_body.enable_thinking\nextra_body.chat_template_kwargs.enable_thinking";
 }
 
 function apiHost(apiBaseUrl) {

@@ -2,14 +2,14 @@
 
 一个无构建步骤的 Chrome Manifest V3 扩展，用大模型完成网页/PDF 文本翻译、截图 OCR 翻译和当前页识别翻译。
 
-## v0.4.0 更新亮点
+## v0.5.1 更新亮点
 
-- 增强 Markdown/GFM 渲染，补充 blockquote、裸链接、脚注和更完整的回归测试。
-- 优化截图输入预览，点击输入图可放大；当前页裁剪成功时可对比裁剪前和实际输入图。
-- 增加 Stop 按钮，支持取消正在进行的流式请求。
-- 增加配置导入、导出、恢复默认设置和常见 Provider 模板。
-- 改进常见错误提示，减少直接暴露长 JSON 或底层异常。
-- 增加商城上传包和 release 脚本，发布包会排除 `.git`、docs、tests、scripts 等开发文件。
+- 合并文本和截图模型配置为单一 `Model` 字段，保存时会同步用于文本翻译和截图/OCR 翻译。
+- 增加模型列表获取按钮，可从兼容服务的 `/models` 端点拉取模型并选择；无法拉取时仍可手动输入模型名。
+- 修复隐藏模型下拉框的表单校验问题，避免 `Save settings` 被浏览器原生 required 校验拦截。
+- 思考模式 Auto 会继续发送 `extra_body.enable_thinking` 和 `extra_body.chat_template_kwargs.enable_thinking` 等冗余字段，兼容更多 Qwen / 本地 OpenAI-compatible 服务。
+- 模型返回 `<think>` 或 reasoning 字段时，思考内容会显示在默认折叠的 `Thinking` 区块中，并计入 `R:` 思考 token。
+- 忽略本地 `.claude/` agent 配置，避免把个人工具权限配置带入仓库。
 
 ## 演示视频
 
@@ -28,11 +28,11 @@
 - 支持 OpenAI-compatible、Anthropic API 与本地 llama.cpp server。
 - 翻译结果支持 Markdown 展示。
 - 支持 Markdown 中的行内公式 `$...$`、`\(...\)` 和公式块 `$$...$$`、`\[...\]` 展示。
-- 支持自定义 API Base URL、API Key、文本模型、多模态模型、目标语言。
+- 支持自定义 API Base URL、API Key、模型和目标语言；同一个模型字段用于文本翻译、截图 OCR 和当前页识别。
 - 支持开关控制 OCR 原文、输入图片显示、截图压缩、当前页边距裁剪和思考模式。
 - 支持配置图片压缩参数：最大边长和 JPEG 质量。
 - 支持模型预设切换，切换前会测试模型连通性。
-- 支持模型连通性测试按钮。
+- 支持模型列表获取和模型连通性测试按钮。
 - 支持常驻 Chrome 侧边栏；侧边栏开启后不再显示页面悬浮窗。
 - 侧边栏将参数区、回复区和提问框分区固定展示，截图翻译后可继续追问。
 
@@ -63,15 +63,15 @@
 
 ## 配置建议
 
-- 文本模型可填写便宜、响应快的模型，用于网页文字和 PDF 可选文字翻译。
-- Vision 模型需要支持图片输入，用于 Screenshot 和 Page 模式。
+- `Model` 字段会同时用于网页文字翻译、Screenshot 和 Page 模式；如果要使用截图/OCR 功能，请选择支持图片输入的多模态模型。
 - OpenAI-compatible 服务通常填写 `/v1` 结尾的 Base URL。
 - Anthropic 服务使用 `https://api.anthropic.com/v1`。
 - 本地 llama.cpp server 可使用 `http://127.0.0.1:8080/v1`，API Key 可以留空。若希望插件开关能控制思考模式，建议启动 server 时使用 `--jinja --reasoning auto`，插件会通过 `chat_template_kwargs.enable_thinking` 传递开关；如果 server 已用 `--reasoning off` 或 `--reasoning on` 固定策略，单次 API 请求通常不能可靠覆盖该全局设置。`--reasoning-budget` 属于 server 侧预算参数，插件侧不默认发送。
-- 思考模式不是所有模型都能控制：DeepSeek Reasoner 这类模型通常由模型名决定是否思考；OpenAI/OpenRouter 使用 `reasoning_effort` 或 `reasoning.*`；Anthropic 使用 `thinking.budget_tokens`；豆包/火山方舟使用 `thinking.type`。默认 `Field preset` 为 Auto，会根据 API Base URL、provider 和模型名推导字段；也可以手动选择字段预设覆盖自动结果。
+- 思考模式不是所有模型都能控制：DeepSeek Reasoner 这类模型通常由模型名决定是否思考；OpenAI/OpenRouter 使用 `reasoning_effort` 或 `reasoning.*`；Anthropic 使用 `thinking.budget_tokens`；豆包/火山方舟使用 `thinking.type`。默认 `Field preset` 为 Auto，会根据 API Base URL、provider 和模型名推导字段；Custom 可手动填写字段路径覆盖自动结果。
 - `Thinking effort` 用于支持 `reasoning_effort` / `reasoning.effort` 的服务，常见值为 `none`、`minimal`、`low`、`medium`、`high`、`xhigh`，具体可用值取决于模型服务。
 - `Thinking token budget` 用于支持 token 预算的服务，例如 Anthropic 的 `thinking.budget_tokens` 或 OpenRouter 的 `reasoning.max_tokens`。填 `0` 表示不发送预算字段。
-- `Custom thinking fields` 只在 `Field preset` 选择 Custom 时生效，支持按行填写字段路径：`thinking.type` 会自动映射为 `enabled` / `disabled`，`reasoning_effort` 和 `reasoning.effort` 会使用 `Thinking effort`，`reasoning.max_tokens` 和 `thinking.budget_tokens` 会使用 `Thinking token budget`，其他字段按布尔值发送。
+- `Custom thinking fields` 只在 `Field preset` 选择 Custom 时生效，支持按行填写字段路径：`thinking.type` 会自动映射为 `enabled` / `disabled`，`reasoning_effort` 和 `reasoning.effort` 会使用 `Thinking effort`，`reasoning.max_tokens` 和 `thinking.budget_tokens` 会使用 `Thinking token budget`，其他字段按布尔值发送。Qwen / 本地兼容服务可使用 `enable_thinking`、`chat_template_kwargs.enable_thinking`、`extra_body.enable_thinking`、`extra_body.chat_template_kwargs.enable_thinking`。
+- 如果模型仍然返回思考内容，插件会把 `<think>...</think>` 或 API 返回的 reasoning 字段放入默认折叠的 `Thinking` 区块，并在状态栏中用 `R:` 显示思考 token 估算。
 
 ## Markdown 展示
 
