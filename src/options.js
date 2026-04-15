@@ -43,10 +43,8 @@ const presetName = document.querySelector("#preset-name");
 const importSettingsFile = document.querySelector("#import-settings-file");
 const targetLanguageSelect = document.querySelector("#target-language-select");
 const targetLanguageCustom = document.querySelector("#target-language-custom");
-const textModelSelect = form.elements.textModel;
-const visionModelSelect = form.elements.visionModel;
-const textModelInput = form.elements.textModelInput;
-const visionModelInput = form.elements.visionModelInput;
+const modelSelect = form.elements.textModel;
+const modelInput = form.elements.textModelInput;
 let saveTimer;
 let modelPresets = [];
 let currentPresetId = "";
@@ -57,24 +55,7 @@ const IMPORTABLE_SETTING_KEYS = Object.keys(DEFAULT_SETTINGS).filter((key) => ke
 const TARGET_LANGUAGE_OPTIONS = Array.from(targetLanguageSelect.options)
   .map((option) => option.value)
   .filter((value) => value !== "Custom");
-const providerDefaults = {
-  openai: {
-    apiBaseUrl: "https://api.openai.com/v1"
-  },
-  anthropic: {
-    apiBaseUrl: "https://api.anthropic.com/v1"
-  },
-  llamacpp: {
-    apiBaseUrl: "http://127.0.0.1:8080/v1"
-  }
-};
 loadSettings();
-
-form.elements.provider.addEventListener("change", async () => {
-  const defaults = providerDefaults[form.elements.provider.value];
-  form.elements.apiBaseUrl.value = defaults.apiBaseUrl;
-  fetchedModels = [];
-});
 
 form.addEventListener("change", async (event) => {
   if (isLoadingPreset) return;
@@ -127,7 +108,7 @@ document.querySelector("#fetch-models").addEventListener("click", async () => {
       return;
     }
     fetchedModels = models;
-    populateModelSelects(models);
+    populateModelSelect(models);
     status.textContent = `Found ${models.length} models.`;
     setTimeout(() => {
       if (status.textContent.startsWith("Found")) status.textContent = "";
@@ -135,50 +116,34 @@ document.querySelector("#fetch-models").addEventListener("click", async () => {
   } catch (error) {
     status.textContent = `Fetch failed: ${error.message}`;
     fetchedModels = [];
-    populateModelSelects([]);
+    populateModelSelect([]);
   } finally {
     fetchBtn.disabled = false;
   }
 });
 
-function populateModelSelects(models) {
-  const savedTextModel = form.elements.textModel.value || "";
-  const savedVisionModel = form.elements.visionModel.value || "";
+function populateModelSelect(models) {
+  const savedModel = form.elements.textModel.value || "";
 
-  textModelSelect.innerHTML = "";
-  visionModelSelect.innerHTML = "";
+  modelSelect.innerHTML = "";
 
   if (models.length === 0) {
-    // No models fetched, show text inputs
-    textModelSelect.hidden = true;
-    textModelInput.hidden = false;
-    visionModelSelect.hidden = true;
-    visionModelInput.hidden = false;
+    modelSelect.hidden = true;
+    modelInput.hidden = false;
     return;
   }
 
-  // Show selects, hide inputs
-  textModelSelect.hidden = false;
-  textModelInput.hidden = true;
-  visionModelSelect.hidden = false;
-  visionModelInput.hidden = true;
+  modelSelect.hidden = false;
+  modelInput.hidden = true;
 
-  // Add placeholder option
-  addOption(textModelSelect, "", "-- select --");
-  addOption(visionModelSelect, "", "-- select --");
+  addOption(modelSelect, "", "-- select --");
 
-  // Add fetched models
   for (const model of models) {
-    addOption(textModelSelect, model, model);
-    addOption(visionModelSelect, model, model);
+    addOption(modelSelect, model, model);
   }
 
-  // Restore saved values if they exist in the list
-  if (savedTextModel && models.includes(savedTextModel)) {
-    textModelSelect.value = savedTextModel;
-  }
-  if (savedVisionModel && models.includes(savedVisionModel)) {
-    visionModelSelect.value = savedVisionModel;
+  if (savedModel && models.includes(savedModel)) {
+    modelSelect.value = savedModel;
   }
 }
 
@@ -189,28 +154,10 @@ function addOption(select, value, label) {
   select.append(option);
 }
 
-function clearModelSelectors() {
-  textModelSelect.innerHTML = '<option value="">-- select or type --</option>';
-  visionModelSelect.innerHTML = '<option value="">-- select or type --</option>';
-  textModelSelect.hidden = true;
-  textModelInput.hidden = false;
-  textModelInput.value = "";
-  visionModelSelect.hidden = true;
-  visionModelInput.hidden = false;
-  visionModelInput.value = "";
-  fetchedModels = [];
-}
-
 // Model select -> hidden input sync
-textModelSelect.addEventListener("change", () => {
-  if (textModelSelect.value) {
-    textModelInput.value = textModelSelect.value;
-  }
-});
-
-visionModelSelect.addEventListener("change", () => {
-  if (visionModelSelect.value) {
-    visionModelInput.value = visionModelSelect.value;
+modelSelect.addEventListener("change", () => {
+  if (modelSelect.value) {
+    modelInput.value = modelSelect.value;
   }
 });
 
@@ -379,8 +326,7 @@ async function loadSettings() {
 
 function fillForm(settings) {
   for (const [key, value] of Object.entries(settings)) {
-    // Skip the hidden input fields
-    if (key === "textModelInput" || key === "visionModelInput") continue;
+    if (key === "textModelInput") continue;
     const field = form.elements[key];
     if (field?.type === "checkbox") {
       field.checked = Boolean(value);
@@ -390,17 +336,12 @@ function fillForm(settings) {
   }
   setTargetLanguageValue(settings.targetLanguage);
 
-  // After setting values, check if we have fetched models to show select vs input
   if (fetchedModels.length > 0) {
-    populateModelSelects(fetchedModels);
+    populateModelSelect(fetchedModels);
   } else {
-    // Default to text inputs
-    textModelSelect.hidden = true;
-    textModelInput.hidden = false;
-    visionModelSelect.hidden = true;
-    visionModelInput.hidden = false;
-    textModelInput.value = settings.textModel || "";
-    visionModelInput.value = settings.visionModel || "";
+    modelSelect.hidden = true;
+    modelInput.hidden = false;
+    modelInput.value = settings.textModel || "";
   }
 }
 
@@ -420,12 +361,7 @@ function readFormSettings() {
       )
       .map((key) => {
         if (key === "textModel") {
-          // Use input field value when select is hidden
-          const value = !textModelSelect.hidden ? data.get(key) : textModelInput.value;
-          return [key, String(value || "").trim()];
-        }
-        if (key === "visionModel") {
-          const value = !visionModelSelect.hidden ? data.get(key) : visionModelInput.value;
+          const value = !modelSelect.hidden ? data.get(key) : modelInput.value;
           return [key, String(value || "").trim()];
         }
         return [key, String(data.get(key) || "").trim()];
