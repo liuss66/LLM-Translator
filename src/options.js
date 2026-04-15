@@ -73,10 +73,7 @@ loadSettings();
 form.elements.provider.addEventListener("change", async () => {
   const defaults = providerDefaults[form.elements.provider.value];
   form.elements.apiBaseUrl.value = defaults.apiBaseUrl;
-  // Clear model fields and fetched models when switching provider
-  clearModelSelectors();
   fetchedModels = [];
-  await saveSettings("Provider changed.");
 });
 
 form.addEventListener("change", async (event) => {
