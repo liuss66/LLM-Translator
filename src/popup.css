@@ -57,7 +57,14 @@ button.secondary {
   font-size: 12px;
 }
 
-.preset-row {
+.model-language-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(92px, 0.45fr);
+  gap: 8px;
+}
+
+.preset-row,
+.language-row {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
@@ -66,7 +73,8 @@ button.secondary {
   font: 700 12px/1.3 Arial, Helvetica, sans-serif;
 }
 
-.preset-row select {
+.preset-row select,
+.language-row select {
   width: 100%;
   box-sizing: border-box;
   border: 1px solid #d0d7de;
@@ -75,6 +83,12 @@ button.secondary {
   color: #1b1f23;
   background: #ffffff;
   font: 13px/1.3 Arial, Helvetica, sans-serif;
+}
+
+@media (max-width: 260px) {
+  .model-language-row {
+    grid-template-columns: 1fr;
+  }
 }
 
 .toggle-actions {

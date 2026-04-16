@@ -2,15 +2,12 @@
 
 一个无构建步骤的 Chrome Manifest V3 扩展，用大模型完成网页/PDF 文本翻译、截图 OCR 翻译和当前页识别翻译。
 
-## v0.5.2 更新亮点
+## v0.5.3 更新亮点
 
-- llama.cpp server 支持空 `Model` 配置；模型为空时请求体不会发送 `model` 字段，由 server 使用启动时加载的模型。
-- 合并文本和截图模型配置为单一 `Model` 字段，保存时会同步用于文本翻译和截图/OCR 翻译。
-- 增加模型列表获取按钮，可从兼容服务的 `/models` 端点拉取模型并选择；无法拉取时仍可手动输入模型名。
-- 修复隐藏模型下拉框的表单校验问题，避免 `Save settings` 被浏览器原生 required 校验拦截。
-- 思考模式 Auto 会继续发送 `extra_body.enable_thinking` 和 `extra_body.chat_template_kwargs.enable_thinking` 等冗余字段，兼容更多 Qwen / 本地 OpenAI-compatible 服务。
-- 模型返回 `<think>` 或 reasoning 字段时，思考内容会显示在默认折叠的 `Thinking` 区块中，并计入 `R:` 思考 token。
-- 忽略本地 `.claude/` agent 配置，避免把个人工具权限配置带入仓库。
+- 修复主页和侧边栏 `Think` 开关联动问题，切换后会同步写回当前模型预设。
+- 配置页模型列表新增 `Custom model...`，可在拉取模型列表后继续手动填写自定义模型名。
+- 主页和侧边栏的 `Model` 下拉框旁新增 `Lang` 目标语言选择，可快速切换翻译语言。
+- 模型相关设置保存逻辑会同步更新当前模型预设，避免切换页面后被旧配置覆盖。
 
 ## 演示视频
 

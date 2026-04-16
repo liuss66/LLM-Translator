@@ -20,6 +20,8 @@ const imageJpegQuality = document.querySelector("#image-jpeg-quality");
 const enableThinking = document.querySelector("#enable-thinking");
 const cropPageMargins = document.querySelector("#crop-page-margins");
 const modelPreset = document.querySelector("#model-preset");
+const targetLanguage = document.querySelector("#target-language");
+const TARGET_LANGUAGE_OPTIONS = ["中文", "English", "日本語", "한국어", "Français", "Deutsch", "Español", "Русский", "Português", "Italiano"];
 let chatHistory = [];
 let hasScreenshotContext = false;
 let currentResult = null;
@@ -66,6 +68,9 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   }
   if (areaName === "sync" && changes.cropPageMargins) {
     cropPageMargins.checked = changes.cropPageMargins.newValue !== false;
+  }
+  if (areaName === "sync" && changes.targetLanguage) {
+    setTargetLanguageValue(changes.targetLanguage.newValue);
   }
   if (
     areaName === "sync" &&
@@ -138,9 +143,20 @@ showInputImage.addEventListener("change", async () => {
 });
 
 enableThinking.addEventListener("change", async () => {
-  await chrome.runtime.sendMessage({
+  const response = await chrome.runtime.sendMessage({
     type: "update-settings",
     settings: { enableThinking: enableThinking.checked }
+  });
+  if (response?.settings) {
+    enableThinking.checked = Boolean(response.settings.enableThinking);
+    renderPresetOptions(response.settings);
+  }
+});
+
+targetLanguage.addEventListener("change", async () => {
+  await chrome.runtime.sendMessage({
+    type: "update-settings",
+    settings: { targetLanguage: targetLanguage.value }
   });
 });
 
@@ -270,6 +286,7 @@ async function loadSettings() {
   imageMaxEdge.value = settings.imageMaxEdge || 1600;
   imageJpegQuality.value = settings.imageJpegQuality || 0.88;
   enableThinking.checked = Boolean(settings.enableThinking);
+  renderTargetLanguageOptions(settings.targetLanguage || "中文");
   renderPresetOptions(settings);
 }
 
@@ -317,6 +334,30 @@ function presetMatchesSettings(preset, settings) {
 function normalizePresetValue(value) {
   if (typeof value === "boolean") return value ? "true" : "false";
   return String(value ?? "").trim();
+}
+
+function renderTargetLanguageOptions(value) {
+  const language = String(value || "中文").trim() || "中文";
+  const options = TARGET_LANGUAGE_OPTIONS.includes(language)
+    ? TARGET_LANGUAGE_OPTIONS
+    : [language, ...TARGET_LANGUAGE_OPTIONS];
+  targetLanguage.innerHTML = "";
+  for (const optionValue of options) {
+    const option = document.createElement("option");
+    option.value = optionValue;
+    option.textContent = optionValue;
+    targetLanguage.append(option);
+  }
+  targetLanguage.value = language;
+}
+
+function setTargetLanguageValue(value) {
+  const language = String(value || "中文").trim() || "中文";
+  if (!Array.from(targetLanguage.options).some((option) => option.value === language)) {
+    renderTargetLanguageOptions(language);
+    return;
+  }
+  targetLanguage.value = language;
 }
 
 async function readSelectedTextWithClipboardFallback(tabId) {

@@ -14,12 +14,18 @@
         <button id="translate-region" type="button" title="Shortcut: Alt+S">Screenshot</button>
         <button id="translate-page" type="button" title="Translate the current visible page">Page</button>
       </div>
-      <label class="preset-row">
-        <span>Model</span>
-        <select id="model-preset">
-          <option value="">New Preset</option>
-        </select>
-      </label>
+      <div class="model-language-row">
+        <label class="preset-row">
+          <span>Model</span>
+          <select id="model-preset">
+            <option value="">New Preset</option>
+          </select>
+        </label>
+        <label class="language-row">
+          <span>Lang</span>
+          <select id="target-language"></select>
+        </label>
+      </div>
       <div class="toggle-actions">
         <label class="toggle-row">
           <input id="show-ocr-result" type="checkbox">

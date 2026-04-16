@@ -45,6 +45,7 @@ const targetLanguageSelect = document.querySelector("#target-language-select");
 const targetLanguageCustom = document.querySelector("#target-language-custom");
 const modelSelect = form.elements.textModel;
 const modelInput = form.elements.textModelInput;
+const CUSTOM_MODEL_VALUE = "__custom__";
 let saveTimer;
 let modelPresets = [];
 let currentPresetId = "";
@@ -150,11 +151,16 @@ function populateModelSelect(models) {
   for (const model of models) {
     addOption(modelSelect, model, model);
   }
+  addOption(modelSelect, CUSTOM_MODEL_VALUE, "Custom model...");
 
   if (savedModel && models.includes(savedModel)) {
     modelSelect.value = savedModel;
     modelInput.value = savedModel;
+  } else if (savedModel) {
+    modelSelect.value = CUSTOM_MODEL_VALUE;
+    modelInput.value = savedModel;
   }
+  syncCustomModelInput();
   updateModelControlState();
 }
 
@@ -167,7 +173,8 @@ function addOption(select, value, label) {
 
 // Model select -> hidden input sync
 modelSelect.addEventListener("change", () => {
-  if (modelSelect.value) {
+  syncCustomModelInput();
+  if (modelSelect.value && modelSelect.value !== CUSTOM_MODEL_VALUE) {
     modelInput.value = modelSelect.value;
   }
 });
@@ -375,7 +382,7 @@ function readFormSettings() {
       )
       .map((key) => {
         if (key === "textModel") {
-          const value = !modelSelect.hidden ? data.get(key) : modelInput.value;
+          const value = readCurrentModelValue();
           return [key, String(value || "").trim()];
         }
         return [key, String(data.get(key) || "").trim()];
@@ -399,13 +406,27 @@ function readFormSettings() {
 }
 
 function readCurrentModelValue() {
-  return String((modelSelect.hidden ? modelInput.value : modelSelect.value) || modelInput.value || "").trim();
+  if (modelSelect.hidden || modelSelect.value === CUSTOM_MODEL_VALUE) {
+    return String(modelInput.value || "").trim();
+  }
+  return String(modelSelect.value || "").trim();
 }
 
 function updateModelControlState() {
   const requireModel = form.elements.provider.value !== "llamacpp";
   modelSelect.required = requireModel && !modelSelect.hidden && !modelSelect.disabled;
   modelInput.required = requireModel && !modelInput.hidden && !modelInput.disabled;
+}
+
+function syncCustomModelInput() {
+  if (modelSelect.hidden || modelSelect.value === CUSTOM_MODEL_VALUE) {
+    modelInput.hidden = false;
+    modelInput.disabled = false;
+  } else {
+    modelInput.hidden = true;
+    modelInput.disabled = true;
+  }
+  updateModelControlState();
 }
 
 async function saveSettings(message, options = {}) {

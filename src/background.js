@@ -240,7 +240,7 @@ async function handleMessage(message, sender) {
   }
 
   if (message?.type === "update-settings") {
-    await chrome.storage.sync.set(message.settings || {});
+    await updateStoredSettings(message.settings || {});
     return { ok: true, settings: await readSettings() };
   }
 
@@ -644,6 +644,32 @@ async function readSettings() {
       ? settings.thinkingRequestFields.trim()
       : DEFAULT_SETTINGS.thinkingRequestFields;
   return settings;
+}
+
+async function updateStoredSettings(partialSettings) {
+  const settings = partialSettings && typeof partialSettings === "object" ? { ...partialSettings } : {};
+  const modelKeys = Object.keys(settings).filter((key) => MODEL_SETTING_KEYS.includes(key));
+  if (modelKeys.length === 0) {
+    await chrome.storage.sync.set(settings);
+    return;
+  }
+
+  const stored = await chrome.storage.sync.get(["currentPresetId", "modelPresets"]);
+  const presets = Array.isArray(stored.modelPresets) ? stored.modelPresets : [];
+  const currentPresetId = stored.currentPresetId || "";
+  if (!currentPresetId || !presets.some((preset) => preset.id === currentPresetId)) {
+    await chrome.storage.sync.set(settings);
+    return;
+  }
+
+  const modelPatch = Object.fromEntries(modelKeys.map((key) => [key, settings[key]]));
+  const nextPresets = presets.map((preset) =>
+    preset.id === currentPresetId ? { ...preset, ...modelPatch } : preset
+  );
+  await chrome.storage.sync.set({
+    ...settings,
+    modelPresets: nextPresets
+  });
 }
 
 async function switchModelPreset(presetId) {
