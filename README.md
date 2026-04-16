@@ -2,8 +2,9 @@
 
 一个无构建步骤的 Chrome Manifest V3 扩展，用大模型完成网页/PDF 文本翻译、截图 OCR 翻译和当前页识别翻译。
 
-## v0.5.1 更新亮点
+## v0.5.2 更新亮点
 
+- llama.cpp server 支持空 `Model` 配置；模型为空时请求体不会发送 `model` 字段，由 server 使用启动时加载的模型。
 - 合并文本和截图模型配置为单一 `Model` 字段，保存时会同步用于文本翻译和截图/OCR 翻译。
 - 增加模型列表获取按钮，可从兼容服务的 `/models` 端点拉取模型并选择；无法拉取时仍可手动输入模型名。
 - 修复隐藏模型下拉框的表单校验问题，避免 `Save settings` 被浏览器原生 required 校验拦截。
@@ -66,7 +67,7 @@
 - `Model` 字段会同时用于网页文字翻译、Screenshot 和 Page 模式；如果要使用截图/OCR 功能，请选择支持图片输入的多模态模型。
 - OpenAI-compatible 服务通常填写 `/v1` 结尾的 Base URL。
 - Anthropic 服务使用 `https://api.anthropic.com/v1`。
-- 本地 llama.cpp server 可使用 `http://127.0.0.1:8080/v1`，API Key 可以留空。若希望插件开关能控制思考模式，建议启动 server 时使用 `--jinja --reasoning auto`，插件会通过 `chat_template_kwargs.enable_thinking` 传递开关；如果 server 已用 `--reasoning off` 或 `--reasoning on` 固定策略，单次 API 请求通常不能可靠覆盖该全局设置。`--reasoning-budget` 属于 server 侧预算参数，插件侧不默认发送。
+- 本地 llama.cpp server 可使用 `http://127.0.0.1:8080/v1`，API Key 和 `Model` 可以留空。`Model` 为空时插件不会发送 `model` 字段，由 llama.cpp server 使用启动时加载的模型。若希望插件开关能控制思考模式，建议启动 server 时使用 `--jinja --reasoning auto`，插件会通过 `chat_template_kwargs.enable_thinking` 传递开关；如果 server 已用 `--reasoning off` 或 `--reasoning on` 固定策略，单次 API 请求通常不能可靠覆盖该全局设置。`--reasoning-budget` 属于 server 侧预算参数，插件侧不默认发送。
 - 思考模式不是所有模型都能控制：DeepSeek Reasoner 这类模型通常由模型名决定是否思考；OpenAI/OpenRouter 使用 `reasoning_effort` 或 `reasoning.*`；Anthropic 使用 `thinking.budget_tokens`；豆包/火山方舟使用 `thinking.type`。默认 `Field preset` 为 Auto，会根据 API Base URL、provider 和模型名推导字段；Custom 可手动填写字段路径覆盖自动结果。
 - `Thinking effort` 用于支持 `reasoning_effort` / `reasoning.effort` 的服务，常见值为 `none`、`minimal`、`low`、`medium`、`high`、`xhigh`，具体可用值取决于模型服务。
 - `Thinking token budget` 用于支持 token 预算的服务，例如 Anthropic 的 `thinking.budget_tokens` 或 OpenRouter 的 `reasoning.max_tokens`。填 `0` 表示不发送预算字段。
@@ -107,9 +108,7 @@
 ## 开发验证
 
 - 运行 `npm test` 检查 Markdown 渲染回归。
-- 运行 `npm run package` 生成本地商城上传包。
 - 运行 `node --check src/background.js`、`node --check src/options.js`、`node --check src/sidepanel.js`、`node --check src/content.js`、`node --check src/markdown.js` 检查脚本语法。
-- 运行 `powershell -ExecutionPolicy Bypass -File scripts/package-extension.ps1` 生成本地商城上传包。
 
 ## 接口要求
 
@@ -123,12 +122,3 @@ Anthropic 模式调用 `POST {baseUrl}/messages`，默认 `baseUrl` 是 `https:/
 llama.cpp server 模式调用 `POST {baseUrl}/chat/completions`，默认 `baseUrl` 是 `http://127.0.0.1:8080/v1`，API Key 可以留空。截图翻译需要你启动的 llama.cpp server 使用支持图像输入的多模态模型。
 
 如果你的服务只支持其他协议，需要调整 `src/background.js` 中的 `callModel`。
-
-## 发布
-
-- 发布前确认 `manifest.json` 中的版本号已经更新。
-- 可使用 `powershell -ExecutionPolicy Bypass -File scripts/package-extension.ps1` 生成商城上传包，输出位于 `dist/`，只包含 `manifest.json` 和 `src/`。
-- 可使用 `powershell -ExecutionPolicy Bypass -File scripts/release.ps1 0.3.7` 执行发布流程：检查干净工作区、更新版本、生成 `RELEASE.md`、运行测试、生成上传包、提交、打 tag、push，并通过 `gh` 创建 release。
-- 如果只想本地准备 release，不推送远程仓库，可加 `-SkipPush`。
-- Chrome Web Store 和 Microsoft Edge Add-ons 都需要上传打包后的扩展压缩包，压缩包不要包含 `.git`、临时文件或本地配置。
-- Git 仓库目录只用于源码管理，不应放入商店上传包。

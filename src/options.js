@@ -78,6 +78,10 @@ form.addEventListener("submit", async (event) => {
   await saveSettings(presetId ? "Settings and preset saved." : "Saved.");
 });
 
+form.elements.provider.addEventListener("change", () => {
+  updateModelControlState();
+});
+
 document.querySelector("#fetch-models").addEventListener("click", async () => {
   const apiBaseUrl = form.elements.apiBaseUrl.value.trim();
   const apiKey = form.elements.apiKey.value.trim();
@@ -123,26 +127,23 @@ document.querySelector("#fetch-models").addEventListener("click", async () => {
 });
 
 function populateModelSelect(models) {
-  const savedModel = form.elements.textModel.value || "";
+  const savedModel = readCurrentModelValue();
 
   modelSelect.innerHTML = "";
 
   if (models.length === 0) {
     modelSelect.hidden = true;
     modelSelect.disabled = true;
-    modelSelect.required = false;
     modelInput.hidden = false;
     modelInput.disabled = false;
-    modelInput.required = true;
+    updateModelControlState();
     return;
   }
 
   modelSelect.hidden = false;
   modelSelect.disabled = false;
-  modelSelect.required = true;
   modelInput.hidden = true;
   modelInput.disabled = true;
-  modelInput.required = false;
 
   addOption(modelSelect, "", "-- select --");
 
@@ -154,6 +155,7 @@ function populateModelSelect(models) {
     modelSelect.value = savedModel;
     modelInput.value = savedModel;
   }
+  updateModelControlState();
 }
 
 function addOption(select, value, label) {
@@ -350,11 +352,10 @@ function fillForm(settings) {
   } else {
     modelSelect.hidden = true;
     modelSelect.disabled = true;
-    modelSelect.required = false;
     modelInput.hidden = false;
     modelInput.disabled = false;
-    modelInput.required = true;
     modelInput.value = settings.textModel || "";
+    updateModelControlState();
   }
 }
 
@@ -395,6 +396,16 @@ function readFormSettings() {
   settings.currentPresetId = currentPresetId;
   settings.modelPresets = modelPresets;
   return settings;
+}
+
+function readCurrentModelValue() {
+  return String((modelSelect.hidden ? modelInput.value : modelSelect.value) || modelInput.value || "").trim();
+}
+
+function updateModelControlState() {
+  const requireModel = form.elements.provider.value !== "llamacpp";
+  modelSelect.required = requireModel && !modelSelect.hidden && !modelSelect.disabled;
+  modelInput.required = requireModel && !modelInput.hidden && !modelInput.disabled;
 }
 
 async function saveSettings(message, options = {}) {

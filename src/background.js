@@ -817,10 +817,12 @@ async function callOpenAIChatCompletions(settings, model, messages, options = {}
   }
 
   const body = {
-    model,
     messages: withThinkingInstruction(settings, messages),
     temperature: 0.2
   };
+  if (shouldSendModelField(settings, model)) {
+    body.model = String(model || "").trim();
+  }
   if (options.stream) {
     body.stream = true;
     if (shouldRequestStreamUsage(settings)) {
@@ -1392,6 +1394,13 @@ function inferThinkingRequestFields(settings, model = "") {
 
   // Default fallback: common fields for OpenAI-compatible local and hosted APIs.
   return "enable_thinking\nchat_template_kwargs.enable_thinking\nextra_body.enable_thinking\nextra_body.chat_template_kwargs.enable_thinking";
+}
+
+function shouldSendModelField(settings, model) {
+  if (settings.provider === "llamacpp" && !String(model || "").trim()) {
+    return false;
+  }
+  return true;
 }
 
 function apiHost(apiBaseUrl) {
