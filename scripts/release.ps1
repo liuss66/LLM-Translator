@@ -96,7 +96,7 @@ $releaseNotes = @(
 )
 $releaseNotes -join "`r`n" | Set-Content -Path (Join-Path $repoRoot "RELEASE.md") -Encoding utf8
 
-Invoke-Checked npm test
+Invoke-Checked npm.cmd test
 $packagePath = (& (Join-Path $repoRoot "scripts\package-extension.ps1") -Version $Version | Select-Object -Last 1)
 if (-not (Test-Path $packagePath)) {
   throw "Package was not created: $packagePath"

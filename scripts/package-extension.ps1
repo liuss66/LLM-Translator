@@ -45,7 +45,7 @@ Remove-Item -LiteralPath $tempRoot -Recurse -Force
 
 $zip = [IO.Compression.ZipFile]::OpenRead($zipPath)
 try {
-  $entries = @($zip.Entries | ForEach-Object { $_.FullName })
+  $entries = @($zip.Entries | ForEach-Object { $_.FullName -replace '\\', '/' })
   $requiredEntries = @("manifest.json", "src/background.js", "src/markdown.js")
   foreach ($entry in $requiredEntries) {
     if ($entries -notcontains $entry) {
