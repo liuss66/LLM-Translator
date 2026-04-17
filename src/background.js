@@ -5,6 +5,8 @@ const DEFAULT_SETTINGS = {
   textModel: "gpt-4o-mini",
   visionModel: "gpt-4o-mini",
   targetLanguage: "中文",
+  displayLanguage: "auto",
+  themeColor: "#2da44e",
   showOcrResult: false,
   showInputImage: false,
   compressInputImage: true,
@@ -580,8 +582,10 @@ async function injectContentAssets(tabId) {
 }
 
 async function showResult(tabId, payload) {
+  const settings = await getSettings();
   lastResult = {
     ...payload,
+    themeColor: settings.themeColor,
     updatedAt: new Date().toISOString()
   };
   await chrome.storage.session.set({ lastResult });
@@ -593,7 +597,7 @@ async function showResult(tabId, payload) {
   await ensureContentScript(tabId);
   await chrome.tabs.sendMessage(tabId, {
     type: "show-translation",
-    payload
+    payload: lastResult
   });
 }
 
@@ -622,6 +626,7 @@ async function readSettings() {
   settings.apiBaseUrl = settings.apiBaseUrl.replace(/\/+$/, "");
   settings.compressInputImage = Boolean(settings.compressInputImage);
   settings.cropPageMargins = settings.cropPageMargins !== false;
+  settings.themeColor = normalizeThemeColor(settings.themeColor);
   settings.imageMaxEdge = clampInteger(settings.imageMaxEdge, 320, 4096, DEFAULT_SETTINGS.imageMaxEdge);
   settings.imageJpegQuality = clampNumber(
     settings.imageJpegQuality,
@@ -2011,4 +2016,9 @@ function normalizeThinkingFieldPreset(value) {
   return ["auto", "doubao", "custom"].includes(preset)
     ? preset
     : DEFAULT_SETTINGS.thinkingFieldPreset;
+}
+
+function normalizeThemeColor(value) {
+  const color = String(value || "").trim();
+  return /^#[0-9a-f]{6}$/i.test(color) ? color.toLowerCase() : DEFAULT_SETTINGS.themeColor;
 }

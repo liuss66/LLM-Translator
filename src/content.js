@@ -8,6 +8,23 @@
   let selectionLayer;
   let currentResultRunId = "";
   let dismissedResultRunId = "";
+  let currentThemeColor = "#2da44e";
+
+  chrome.storage.sync
+    .get({ themeColor: "#2da44e" })
+    .then(({ themeColor }) => {
+      currentThemeColor = normalizeThemeColor(themeColor);
+      applyThemeColor(resultPanel, currentThemeColor);
+      applyThemeColor(selectionLayer, currentThemeColor);
+    })
+    .catch(() => {});
+
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== "sync" || !changes.themeColor) return;
+    currentThemeColor = normalizeThemeColor(changes.themeColor.newValue);
+    applyThemeColor(resultPanel, currentThemeColor);
+    applyThemeColor(selectionLayer, currentThemeColor);
+  });
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message?.type === "ping") {
@@ -87,6 +104,7 @@
       document.documentElement.append(resultPanel);
     }
 
+    applyThemeColor(resultPanel, payload.themeColor || currentThemeColor);
     resultPanel.querySelector(".llmt-panel__title").innerHTML =
       'LLM Translator <span class="brand-mark">@Liuss</span>';
     resultPanel.querySelector(".llmt-panel__meta").innerHTML = formatMeta(payload);
@@ -123,9 +141,10 @@
       payload.elapsedMs ??
       (payload.startedAt ? Date.now() - new Date(payload.startedAt).getTime() : undefined);
     if (elapsedMs !== undefined) parts.push(formatMetric("T", formatDuration(elapsedMs)));
-    if (metrics.ttftMs !== undefined) parts.push(formatMetric("TTFT", formatDuration(metrics.ttftMs)));
-    if (metrics.tokensPerSecond !== undefined) parts.push(formatMetric("TPS", formatRate(metrics.tokensPerSecond)));
-    const tokenSummary = formatTokenSummary(metrics);
+    const detailParts = [];
+    if (metrics.ttftMs !== undefined) detailParts.push(formatMetric("TTFT", formatDuration(metrics.ttftMs)));
+    if (metrics.tokensPerSecond !== undefined) detailParts.push(formatMetric("TPS", formatRate(metrics.tokensPerSecond)));
+    const tokenSummary = formatTokenSummary(metrics, detailParts);
     if (tokenSummary) parts.push(tokenSummary);
     if (payload.isStreaming) {
       parts.push('<span class="llmt-meta__label">Stream</span>');
@@ -153,7 +172,7 @@
     return `${Math.round(tokens)}`;
   }
 
-  function formatTokenSummary(metrics) {
+  function formatTokenSummary(metrics, detailParts = []) {
     if (metrics.inputTokens === undefined && metrics.outputTokens === undefined) return "";
     const input = Number(metrics.inputTokens || 0);
     const output = Number(metrics.outputTokens || 0);
@@ -161,8 +180,17 @@
     const total = formatTokens(input + output);
     const up = formatTokens(input);
     const down = formatTokens(output);
-    const reasoningPart = reasoning > 0 ? ` <span class="llmt-meta__label">R:</span><span class="llmt-meta__value">${formatTokens(reasoning)}</span>` : "";
-    return `<span class="llmt-meta__label">Tokens:</span><span class="llmt-meta__value">${total}</span> <span class="llmt-meta__arrow">↑</span><span class="llmt-meta__value">${up}</span><span class="llmt-meta__arrow">↓</span><span class="llmt-meta__value">${down}</span>${reasoningPart}`;
+    const hiddenDetails = [
+      ...detailParts,
+      `<span class="llmt-meta__arrow">↑</span><span class="llmt-meta__value">${up}</span>`,
+      `<span class="llmt-meta__arrow">↓</span><span class="llmt-meta__value">${down}</span>`
+    ];
+    if (reasoning > 0) {
+      hiddenDetails.push(
+        `<span class="llmt-meta__label">R:</span><span class="llmt-meta__value">${formatTokens(reasoning)}</span>`
+      );
+    }
+    return `<span class="llmt-meta__label">Tokens:</span><span class="llmt-meta__value">${total}</span><span class="llmt-meta__details"> ${hiddenDetails.join(" ")}</span>`;
   }
 
   function formatMetric(label, value) {
@@ -196,6 +224,7 @@
       <div class="llmt-selection-box"></div>
     `;
     document.documentElement.append(selectionLayer);
+    applyThemeColor(selectionLayer, currentThemeColor);
 
     const box = selectionLayer.querySelector(".llmt-selection-box");
     let startX = 0;
@@ -300,5 +329,14 @@
 
   function closeImagePreview() {
     document.querySelector(".llmt-image-preview")?.remove();
+  }
+
+  function normalizeThemeColor(value) {
+    const color = String(value || "").trim();
+    return /^#[0-9a-f]{6}$/i.test(color) ? color.toLowerCase() : "#2da44e";
+  }
+
+  function applyThemeColor(element, value) {
+    element?.style.setProperty("--llmt-theme-color", normalizeThemeColor(value));
   }
 })();

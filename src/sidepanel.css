@@ -1,4 +1,6 @@
 :root {
+  --llmt-theme-color: #2da44e;
+  accent-color: var(--llmt-theme-color);
   color-scheme: light;
   font-family: Arial, Helvetica, sans-serif;
   color: #1b1f23;
@@ -11,6 +13,7 @@ body {
 }
 
 main {
+  position: relative;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   height: 100vh;
@@ -19,29 +22,15 @@ main {
   background: #ffffff;
 }
 
-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
 .config-panel {
   z-index: 2;
   display: grid;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
-  padding: 12px 14px;
+  padding: 8px 14px 10px;
   border-bottom: 1px solid #d0d7de;
   background: #ffffff;
   box-shadow: 0 2px 8px rgba(31, 35, 40, 0.06);
-}
-
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex: 0 0 auto;
 }
 
 .config-content {
@@ -52,30 +41,20 @@ header {
   display: none;
 }
 
-h1,
 h2 {
   margin: 0;
   line-height: 1.25;
-}
-
-h1 {
-  font-size: 18px;
-}
-
-.brand-mark {
-  color: #57606a;
-  font-size: 12px;
-  font-weight: 700;
-  white-space: nowrap;
 }
 
 h2 {
   font-size: 15px;
 }
 
-.actions {
+.config-actions-row {
   display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
+  align-items: center;
 }
 
 .primary-actions {
@@ -114,6 +93,13 @@ h2 {
   color: #1b1f23;
   background: #ffffff;
   font: 13px/1.3 Arial, Helvetica, sans-serif;
+}
+
+.preset-row select:focus-visible,
+.language-row select:focus-visible {
+  border-color: var(--llmt-theme-color);
+  outline: 2px solid color-mix(in srgb, var(--llmt-theme-color) 28%, transparent);
+  outline-offset: 1px;
 }
 
 @media (max-width: 360px) {
@@ -168,7 +154,7 @@ h2 {
 }
 
 .toggle-row input:checked + .toggle-ui {
-  background: #2da44e;
+  background: var(--llmt-theme-color);
 }
 
 .toggle-row input:checked + .toggle-ui::after {
@@ -176,16 +162,19 @@ h2 {
 }
 
 .image-settings {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr);
-  gap: 8px;
-  align-items: end;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   padding: 8px 0 0;
 }
 
 .image-settings .toggle-row {
-  align-self: center;
-  padding-bottom: 8px;
+  min-width: 0;
+  padding-bottom: 0;
+}
+
+.compression-param {
+  display: none !important;
 }
 
 .image-settings label:not(.toggle-row) {
@@ -218,11 +207,11 @@ h2 {
 }
 
 button {
-  border: 1px solid #2da44e;
+  border: 1px solid var(--llmt-theme-color);
   border-radius: 6px;
   padding: 9px 10px;
   color: #ffffff;
-  background: #2da44e;
+  background: var(--llmt-theme-color);
   cursor: pointer;
   font: 700 13px/1.2 Arial, Helvetica, sans-serif;
 }
@@ -232,10 +221,57 @@ textarea:disabled {
   cursor: not-allowed;
 }
 
-header button {
-  border-color: #d0d7de;
-  color: #1b1f23;
+.fold-button {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  color: #6e7781;
+  background: transparent;
+  font: 700 13px/1 Arial, Helvetica, sans-serif;
+}
+
+.fold-button:hover {
+  color: var(--llmt-theme-color);
+  background: color-mix(in srgb, var(--llmt-theme-color) 10%, #ffffff);
+}
+
+.fold-button span {
+  transform: translateY(-1px);
+}
+
+.fold-button--top {
+  align-self: stretch;
+  height: 100%;
+  min-height: 32px;
   background: #f6f8fa;
+}
+
+.settings-fab {
+  position: fixed;
+  right: 10px;
+  bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  z-index: 5;
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-color: color-mix(in srgb, var(--llmt-theme-color) 34%, #d0d7de);
+  border-radius: 999px;
+  padding: 0;
+  color: var(--llmt-theme-color);
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(31, 35, 40, 0.14);
+  font: 700 14px/1 Arial, Helvetica, sans-serif;
+}
+
+.settings-fab:hover {
+  color: var(--llmt-theme-color);
+  background: color-mix(in srgb, var(--llmt-theme-color) 10%, #ffffff);
 }
 
 .reply-area {
@@ -400,12 +436,16 @@ header button {
 
 .copy-button {
   flex: 0 0 auto;
-  border-color: #d0d7de;
+  border-color: color-mix(in srgb, var(--llmt-theme-color) 34%, #d0d7de);
   border-radius: 6px;
   padding: 3px 7px;
-  color: #57606a;
+  color: var(--llmt-theme-color);
   background: #f6f8fa;
   font: 700 11px/1.2 Arial, Helvetica, sans-serif;
+}
+
+.copy-button:hover {
+  background: color-mix(in srgb, var(--llmt-theme-color) 10%, #ffffff);
 }
 
 .copy-button[hidden] {
@@ -568,7 +608,7 @@ header button {
 #result-translation .llmt-footnote-backref,
 .chat-message__content .llmt-footnote-ref a,
 .chat-message__content .llmt-footnote-backref {
-  color: #0969da;
+  color: var(--llmt-theme-color);
   text-decoration: none;
 }
 
@@ -648,8 +688,8 @@ header button {
 }
 
 .answer-actions .secondary {
-  border-color: #d0d7de;
-  color: #1b1f23;
+  border-color: color-mix(in srgb, var(--llmt-theme-color) 34%, #d0d7de);
+  color: var(--llmt-theme-color);
   background: #f6f8fa;
 }
 
@@ -660,11 +700,38 @@ header button {
 .answer-box {
   z-index: 2;
   display: grid;
-  gap: 8px;
-  padding: 10px 14px 12px;
+  gap: 4px;
+  padding: 4px 14px 10px;
   border-top: 1px solid #d0d7de;
   background: #ffffff;
   box-shadow: 0 -2px 8px rgba(31, 35, 40, 0.06);
+}
+
+.answer-toolbar {
+  display: flex;
+  justify-content: center;
+  height: 18px;
+  margin: -2px 0 0;
+}
+
+.answer-toolbar .fold-button {
+  width: 42px;
+  height: 18px;
+  border-radius: 999px;
+  background: #f6f8fa;
+}
+
+.answer-content {
+  display: grid;
+  gap: 8px;
+}
+
+.answer-box.is-collapsed {
+  padding-bottom: 6px;
+}
+
+.answer-box.is-collapsed .answer-content {
+  display: none;
 }
 
 #chat-input {
@@ -677,6 +744,12 @@ header button {
   color: #1b1f23;
   background: #ffffff;
   font: 13px/1.4 Arial, Helvetica, sans-serif;
+}
+
+#chat-input:focus-visible {
+  border-color: var(--llmt-theme-color);
+  outline: 2px solid color-mix(in srgb, var(--llmt-theme-color) 28%, transparent);
+  outline-offset: 1px;
 }
 
 #chat-form[aria-disabled="true"] {
@@ -722,8 +795,17 @@ header button {
 #status {
   min-height: 18px;
   margin: 0;
+  padding-right: 40px;
   color: #57606a;
   font-size: 12px;
+}
+
+.status-details {
+  display: none;
+}
+
+#status:hover .status-details {
+  display: inline;
 }
 
 .status-metric__label,

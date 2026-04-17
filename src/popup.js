@@ -9,6 +9,7 @@ const cropPageMargins = document.querySelector("#crop-page-margins");
 const modelPreset = document.querySelector("#model-preset");
 const targetLanguage = document.querySelector("#target-language");
 const TARGET_LANGUAGE_OPTIONS = ["中文", "English", "日本語", "한국어", "Français", "Deutsch", "Español", "Русский", "Português", "Italiano"];
+let currentDisplayLanguage = "en";
 let activeTabContext = null;
 
 loadSettings();
@@ -38,6 +39,12 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   }
   if (areaName === "sync" && changes.targetLanguage) {
     setTargetLanguageValue(changes.targetLanguage.newValue);
+  }
+  if (areaName === "sync" && changes.displayLanguage) {
+    applyPopupDisplayLanguage(changes.displayLanguage.newValue);
+  }
+  if (areaName === "sync" && changes.themeColor) {
+    applyThemeColor(changes.themeColor.newValue);
   }
   if (
     areaName === "sync" &&
@@ -115,18 +122,18 @@ modelPreset.addEventListener("change", async () => {
     window.close();
     return;
   }
-  status.textContent = "Testing model...";
+  status.textContent = getPopupText("switching");
   modelPreset.disabled = true;
   try {
     const response = await chrome.runtime.sendMessage({
       type: "switch-model-preset",
       presetId
     });
-    if (!response?.ok) throw new Error(response?.error || "Model preset is unavailable.");
-    status.textContent = "切换成功";
+    if (!response?.ok) throw new Error(response?.error || getPopupText("modelPresetUnavailable"));
+    status.textContent = getPopupText("switched");
     modelPreset.value = presetId;
   } catch (error) {
-    const message = error.message || "Model preset is unavailable.";
+    const message = error.message || getPopupText("modelPresetUnavailable");
     await loadSettings();
     status.textContent = message;
   } finally {
@@ -150,37 +157,37 @@ document.querySelector("#translate-selection").addEventListener("click", async (
       tabId: tab.id,
       text
     });
-    if (!response?.ok) throw new Error(response?.error || "Failed to translate selection.");
+    if (!response?.ok) throw new Error(response?.error || getPopupText("translateSelectionFailed"));
     window.close();
   } catch (error) {
-    status.textContent = error.message || "Failed to translate selection.";
+    status.textContent = error.message || getPopupText("translateSelectionFailed");
   }
 });
 
 document.querySelector("#translate-region").addEventListener("click", async () => {
   try {
     const response = await chrome.runtime.sendMessage({ type: "start-region-selection" });
-    if (!response?.ok) throw new Error(response?.error || "Failed to start region selection.");
+    if (!response?.ok) throw new Error(response?.error || getPopupText("startRegionFailed"));
     window.close();
   } catch (error) {
-    status.textContent = error.message || "Failed to start region selection.";
+    status.textContent = error.message || getPopupText("startRegionFailed");
   }
 });
 
 document.querySelector("#translate-page").addEventListener("click", async () => {
   try {
     const response = await chrome.runtime.sendMessage({ type: "translate-current-page" });
-    if (!response?.ok) throw new Error(response?.error || "Failed to translate current page.");
+    if (!response?.ok) throw new Error(response?.error || getPopupText("translatePageFailed"));
     window.close();
   } catch (error) {
-    status.textContent = error.message || "Failed to translate current page.";
+    status.textContent = error.message || getPopupText("translatePageFailed");
   }
 });
 
 document.querySelector("#open-side-panel").addEventListener("click", async () => {
   try {
     if (!activeTabContext?.windowId) {
-      throw new Error("No active browser window found. Reopen the extension popup and try again.");
+      throw new Error(getPopupText("noActiveWindow"));
     }
     const openPromise = chrome.sidePanel.open({ windowId: activeTabContext.windowId });
     await chrome.runtime.sendMessage({ type: "mark-side-panel-open", tabId: activeTabContext.tabId });
@@ -188,7 +195,7 @@ document.querySelector("#open-side-panel").addEventListener("click", async () =>
     window.close();
   } catch (error) {
     chrome.storage.session.set({ sidePanelOpen: false });
-    status.textContent = error.message || "Failed to open side panel.";
+    status.textContent = error.message || getPopupText("openSidePanelFailed");
   }
 });
 
@@ -207,6 +214,8 @@ async function loadSettings() {
   imageMaxEdge.value = settings.imageMaxEdge || 1600;
   imageJpegQuality.value = settings.imageJpegQuality || 0.88;
   enableThinking.checked = Boolean(settings.enableThinking);
+  applyThemeColor(settings.themeColor);
+  applyPopupDisplayLanguage(settings.displayLanguage || "auto");
   renderTargetLanguageOptions(settings.targetLanguage || "中文");
   renderPresetOptions(settings);
 }
@@ -225,7 +234,11 @@ function renderPresetOptions(settings) {
   const currentValue = resolveActivePresetId(settings, presets);
   modelPreset.innerHTML = "";
   if (presets.length === 0) {
-    modelPreset.innerHTML = '<option value="">New Preset</option>';
+    modelPreset.innerHTML = "";
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = getPopupText("newPreset");
+    modelPreset.append(option);
     return;
   }
   presets.forEach((preset) => {
@@ -255,8 +268,7 @@ function presetMatchesSettings(preset, settings) {
     "thinkingEffort",
     "thinkingBudgetTokens",
     "thinkingFieldPreset",
-    "thinkingRequestFields",
-    "systemPrompt"
+    "thinkingRequestFields"
   ];
   return keys.every((key) => normalizePresetValue(preset[key]) === normalizePresetValue(settings[key]));
 }
@@ -374,4 +386,130 @@ function clampNumber(value, min, max, fallback) {
 
 function isValidWindowId(windowId) {
   return Number.isInteger(windowId) && windowId >= 0;
+}
+
+const POPUP_UI_TEXT = {
+  en: {
+    text: "Text",
+    screenshot: "Screenshot",
+    page: "Page",
+    model: "Model",
+    lang: "Lang",
+    ocr: "OCR",
+    image: "Image",
+    think: "Think",
+    crop: "Crop",
+    compress: "Compress",
+    edge: "Edge",
+    quality: "Quality",
+    sidePanel: "Side panel",
+    options: "Options",
+    newPreset: "New Preset",
+    switching: "Testing model...",
+    switched: "Switched",
+    shortcutText: "Shortcut: Alt+T",
+    shortcutScreenshot: "Shortcut: Alt+S",
+    pageTitle: "Translate the current visible page",
+    sidePanelTitle: "Shortcut: Alt+Shift+Y",
+    optionsTitle: "Open settings",
+    imageSettingsLabel: "Image compression settings",
+    modelPresetUnavailable: "Model preset is unavailable.",
+    translateSelectionFailed: "Failed to translate selection.",
+    startRegionFailed: "Failed to start region selection.",
+    translatePageFailed: "Failed to translate current page.",
+    noActiveWindow: "No active browser window found. Reopen the extension popup and try again.",
+    openSidePanelFailed: "Failed to open side panel."
+  },
+  "zh-CN": {
+    text: "文本",
+    screenshot: "截图",
+    page: "整页",
+    model: "模型",
+    lang: "语言",
+    ocr: "OCR",
+    image: "图片",
+    think: "思考",
+    crop: "裁剪",
+    compress: "压缩",
+    edge: "边长",
+    quality: "质量",
+    sidePanel: "侧边栏",
+    options: "设置",
+    newPreset: "新建预设",
+    switching: "正在测试模型...",
+    switched: "切换成功",
+    shortcutText: "快捷键：Alt+T",
+    shortcutScreenshot: "快捷键：Alt+S",
+    pageTitle: "翻译当前可见页",
+    sidePanelTitle: "快捷键：Alt+Shift+Y",
+    optionsTitle: "打开设置",
+    imageSettingsLabel: "图片压缩设置",
+    modelPresetUnavailable: "模型预设不可用。",
+    translateSelectionFailed: "翻译选中文本失败。",
+    startRegionFailed: "启动截图框选失败。",
+    translatePageFailed: "翻译当前页失败。",
+    noActiveWindow: "没有找到活动浏览器窗口。请重新打开扩展弹窗后再试。",
+    openSidePanelFailed: "打开侧边栏失败。"
+  }
+};
+
+function applyPopupDisplayLanguage(value) {
+  currentDisplayLanguage = resolveDisplayLanguage(value);
+  const text = POPUP_UI_TEXT[currentDisplayLanguage];
+  document.documentElement.lang = currentDisplayLanguage;
+  setText("#translate-selection", text.text);
+  setText("#translate-region", text.screenshot);
+  setText("#translate-page", text.page);
+  setText(".preset-row span", text.model);
+  setText(".language-row span", text.lang);
+  setText("#show-ocr-result ~ span:last-child", text.ocr);
+  setText("#show-input-image ~ span:last-child", text.image);
+  setText("#enable-thinking ~ span:last-child", text.think);
+  setText("#crop-page-margins ~ span:last-child", text.crop);
+  setText("#compress-input-image ~ span:last-child", text.compress);
+  setLabelText("#image-max-edge", text.edge);
+  setLabelText("#image-jpeg-quality", text.quality);
+  setText("#open-side-panel", text.sidePanel);
+  setText("#open-options", text.options);
+  document.querySelector("#translate-selection")?.setAttribute("title", text.shortcutText);
+  document.querySelector("#translate-region")?.setAttribute("title", text.shortcutScreenshot);
+  document.querySelector("#translate-page")?.setAttribute("title", text.pageTitle);
+  document.querySelector("#open-side-panel")?.setAttribute("title", text.sidePanelTitle);
+  document.querySelector("#open-options")?.setAttribute("title", text.optionsTitle);
+  document.querySelector(".image-settings")?.setAttribute("aria-label", text.imageSettingsLabel);
+  if (modelPreset.options.length === 1 && modelPreset.options[0].value === "") {
+    modelPreset.options[0].textContent = text.newPreset;
+  }
+}
+
+function resolveDisplayLanguage(value) {
+  if (value === "zh-CN") return "zh-CN";
+  if (value === "en") return "en";
+  return navigator.language?.toLowerCase().startsWith("zh") ? "zh-CN" : "en";
+}
+
+function normalizeThemeColor(value) {
+  const color = String(value || "").trim();
+  return /^#[0-9a-f]{6}$/i.test(color) ? color.toLowerCase() : "#2da44e";
+}
+
+function applyThemeColor(value) {
+  document.documentElement.style.setProperty("--llmt-theme-color", normalizeThemeColor(value));
+}
+
+function getPopupText(key) {
+  return POPUP_UI_TEXT[currentDisplayLanguage]?.[key] || POPUP_UI_TEXT.en[key] || "";
+}
+
+function setText(selector, value) {
+  const element = document.querySelector(selector);
+  if (element) element.textContent = value;
+}
+
+function setLabelText(inputSelector, value) {
+  const input = document.querySelector(inputSelector);
+  const label = input?.closest("label");
+  if (!label) return;
+  const textNode = Array.from(label.childNodes).find((node) => node.nodeType === Node.TEXT_NODE);
+  if (textNode) textNode.nodeValue = `${value}\n          `;
 }
