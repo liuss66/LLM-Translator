@@ -1,8 +1,8 @@
 :root {
   color-scheme: light;
   font-family: Arial, Helvetica, sans-serif;
-  color: #1b1f23;
-  background: #f6f8fa;
+  color: #263642;
+  background: #ffffff;
 }
 
 body {
@@ -10,8 +10,8 @@ body {
 }
 
 .page {
-  width: min(920px, calc(100vw - 32px));
-  margin: 32px auto;
+  width: min(1160px, calc(100vw - 32px));
+  margin: 28px auto;
 }
 
 h1 {
@@ -45,6 +45,13 @@ p {
   line-height: 1.5;
 }
 
+.page-intro {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
 .section-note {
   margin: 0;
   font-size: 13px;
@@ -55,13 +62,57 @@ form {
   gap: 16px;
 }
 
+.options-layout {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 28px;
+  align-items: start;
+}
+
+.settings-menu {
+  position: sticky;
+  top: 16px;
+  display: grid;
+  gap: 4px;
+  padding: 0 18px 0 0;
+  border-right: 1px solid #d8dee4;
+}
+
+.tab-button {
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  padding: 10px 12px;
+  color: #57606a;
+  background: transparent;
+  text-align: left;
+}
+
+.tab-button:hover {
+  color: #1b1f23;
+  background: #eef6f8;
+}
+
+.tab-button.active {
+  color: #d83b78;
+  background: #e8f3f6;
+}
+
+.tab-content {
+  min-width: 0;
+}
+
 .settings-section {
   display: grid;
-  gap: 12px;
-  padding: 14px;
-  border: 1px solid #d0d7de;
-  border-radius: 8px;
+  gap: 18px;
+  padding: 8px 0 24px;
+  border: 0;
+  border-radius: 0;
   background: #ffffff;
+}
+
+.tab-panel[hidden] {
+  display: none;
 }
 
 .preset-grid {
@@ -91,6 +142,11 @@ form {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+}
+
+.single-action {
+  display: flex;
+  justify-content: flex-start;
 }
 
 .section-divider {
@@ -170,8 +226,8 @@ select,
 textarea {
   box-sizing: border-box;
   width: 100%;
-  border: 1px solid #d0d7de;
-  border-radius: 6px;
+  border: 1px solid #c8d1da;
+  border-radius: 4px;
   padding: 10px 12px;
   color: #1b1f23;
   background: #ffffff;
@@ -190,10 +246,10 @@ textarea {
 
 button {
   border: 0;
-  border-radius: 6px;
+  border-radius: 4px;
   padding: 10px 14px;
   color: #ffffff;
-  background: #2da44e;
+  background: #53616c;
   cursor: pointer;
   font-weight: 700;
 }
@@ -209,6 +265,21 @@ button.danger {
 }
 
 @media (max-width: 640px) {
+  .options-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-menu {
+    position: static;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    padding: 0;
+    border-right: 0;
+  }
+
+  .tab-button {
+    text-align: center;
+  }
+
   .preset-grid,
   .settings-grid,
   .compact-grid,
@@ -223,7 +294,8 @@ button.danger {
 }
 
 #status {
-  color: #57606a;
+  color: #d83b78;
+  font-size: 13px;
 }
 
 .model-row {
@@ -241,6 +313,12 @@ button.danger {
   align-self: flex-end;
 }
 
+.model-row #test-model {
+  flex: 0 0 auto;
+  height: 42px;
+  align-self: flex-end;
+}
+
 .model-row .model-field {
   flex: 1;
   min-width: 180px;
@@ -249,4 +327,46 @@ button.danger {
 .model-select,
 .model-input {
   width: 100%;
+}
+
+.shortcut-list {
+  display: grid;
+  gap: 10px;
+  max-width: 640px;
+}
+
+.shortcut-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  padding: 12px 14px;
+  border-radius: 4px;
+  background: #f6f8fa;
+}
+
+.shortcut-row div {
+  display: grid;
+  gap: 4px;
+}
+
+.shortcut-row strong {
+  color: #263642;
+  font-size: 14px;
+}
+
+.shortcut-row span {
+  color: #6b7a8a;
+  font-size: 13px;
+}
+
+kbd {
+  min-width: 92px;
+  padding: 6px 8px;
+  border: 1px solid #c8d1da;
+  border-radius: 4px;
+  color: #263642;
+  background: #ffffff;
+  text-align: center;
+  font: 700 12px/1.2 Arial, Helvetica, sans-serif;
 }

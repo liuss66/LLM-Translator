@@ -32,8 +32,7 @@ const MODEL_SETTING_KEYS = [
   "thinkingEffort",
   "thinkingBudgetTokens",
   "thinkingFieldPreset",
-  "thinkingRequestFields",
-  "systemPrompt"
+  "thinkingRequestFields"
 ];
 
 const form = document.querySelector("#settings-form");
@@ -43,6 +42,8 @@ const presetName = document.querySelector("#preset-name");
 const importSettingsFile = document.querySelector("#import-settings-file");
 const targetLanguageSelect = document.querySelector("#target-language-select");
 const targetLanguageCustom = document.querySelector("#target-language-custom");
+const tabButtons = Array.from(document.querySelectorAll(".tab-button"));
+const tabPanels = Array.from(document.querySelectorAll(".tab-panel"));
 const modelSelect = form.elements.textModel;
 const modelInput = form.elements.textModelInput;
 const CUSTOM_MODEL_VALUE = "__custom__";
@@ -75,6 +76,7 @@ form.addEventListener("input", (event) => {
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (!reportFormValidity()) return;
   const presetId = await saveCurrentModelPreset();
   await saveSettings(presetId ? "Settings and preset saved." : "Saved.");
 });
@@ -180,6 +182,7 @@ modelSelect.addEventListener("change", () => {
 });
 
 document.querySelector("#test-model").addEventListener("click", async () => {
+  if (!reportFormValidity()) return;
   status.textContent = "Testing model...";
   try {
     const response = await chrome.runtime.sendMessage({
@@ -238,6 +241,20 @@ document.querySelector("#restore-defaults").addEventListener("click", async () =
 
 presetSelect.addEventListener("change", () => {
   loadSelectedPreset();
+});
+
+tabButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    selectTab(button.dataset.tab);
+  });
+});
+
+document.querySelector("#new-preset").addEventListener("click", async () => {
+  selectTab("model-config");
+  clearCurrentPreset();
+  clearModelConnectionFields();
+  await chrome.storage.sync.set({ currentPresetId });
+  status.textContent = "New preset ready. Fill the model config and click Save preset.";
 });
 
 document.querySelector("#save-preset").addEventListener("click", async () => {
@@ -446,8 +463,9 @@ async function saveSettings(message, options = {}) {
 
 function renderPresetOptions() {
   presetSelect.innerHTML = "";
+  addOption(presetSelect, "", modelPresets.length === 0 ? "No saved presets" : "Select preset");
   if (modelPresets.length === 0) {
-    presetSelect.innerHTML = '<option value="">New Preset</option>';
+    presetSelect.value = "";
     return;
   }
   modelPresets.forEach((preset) => {
@@ -630,6 +648,40 @@ function clearCurrentPreset() {
   currentPresetId = "";
   presetSelect.value = "";
   presetName.value = "";
+}
+
+function clearModelConnectionFields() {
+  form.elements.apiBaseUrl.value = "";
+  form.elements.apiKey.value = "";
+  form.elements.textModel.value = "";
+  form.elements.textModelInput.value = "";
+  fetchedModels = [];
+  populateModelSelect([]);
+}
+
+function selectTab(tabId) {
+  if (!tabId) return;
+  tabButtons.forEach((button) => {
+    const active = button.dataset.tab === tabId;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", active ? "true" : "false");
+  });
+  tabPanels.forEach((panel) => {
+    const active = panel.id === tabId;
+    panel.classList.toggle("active", active);
+    panel.hidden = !active;
+  });
+}
+
+function reportFormValidity() {
+  if (form.checkValidity()) return true;
+  const invalidField = form.querySelector(":invalid");
+  const panel = invalidField?.closest(".tab-panel");
+  if (panel?.id) {
+    selectTab(panel.id);
+  }
+  form.reportValidity();
+  return false;
 }
 
 function isPresetControl(target) {

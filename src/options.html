@@ -9,11 +9,24 @@
   <body>
     <main class="page">
       <h1>LLM Translator <span class="brand-mark">@Liuss</span></h1>
-      <p>填写模型服务配置。设置保存在 Chrome 同步存储中。</p>
+      <p class="page-intro">
+        填写模型服务配置。修改参数后会自动保存。
+        <span id="status" role="status"></span>
+      </p>
 
-      <form id="settings-form">
-        <section class="settings-section">
-          <h2>Model config</h2>
+      <form id="settings-form" novalidate>
+        <div class="options-layout">
+          <aside class="settings-menu" aria-label="Settings menu">
+            <button type="button" class="tab-button active" data-tab="model-config" aria-controls="model-config">Model config</button>
+            <button type="button" class="tab-button" data-tab="app-config" aria-controls="app-config">App config</button>
+            <button type="button" class="tab-button" data-tab="prompt-config" aria-controls="prompt-config">Prompt</button>
+            <button type="button" class="tab-button" data-tab="keyboard-config" aria-controls="keyboard-config">Keyboard</button>
+            <button type="button" class="tab-button" data-tab="config-backup" aria-controls="config-backup">Config backup</button>
+          </aside>
+
+          <div class="tab-content">
+            <section id="model-config" class="settings-section tab-panel active">
+              <h2>Model config</h2>
           <div class="preset-grid">
             <label>
               Preset
@@ -27,6 +40,7 @@
             </label>
           </div>
           <div class="preset-actions">
+            <button type="button" id="new-preset" class="secondary">New preset</button>
             <button type="button" id="save-preset" class="secondary">Save preset</button>
             <button type="button" id="delete-preset" class="secondary danger">Delete preset</button>
           </div>
@@ -60,6 +74,7 @@
               <input name="textModelInput" type="text" class="model-input" placeholder="gpt-4o-mini" hidden>
             </label>
             <button type="button" id="fetch-models" class="secondary" title="Fetch model list from /models endpoint">Fetch</button>
+            <button type="button" id="test-model" class="secondary">Test model</button>
           </div>
 
           <label class="toggle-row">
@@ -105,19 +120,10 @@
             ></textarea>
           </label>
           <p class="section-note">Auto 会根据 URL 和模型名自动选择最合适的字段；Custom 才使用下面的自定义字段。</p>
+            </section>
 
-          <div class="section-title-row">
-            <h3>Prompt</h3>
-            <button type="button" id="restore-default-prompt" class="secondary">Default prompt</button>
-          </div>
-          <label>
-            System prompt
-            <textarea name="systemPrompt" rows="6"></textarea>
-          </label>
-        </section>
-
-        <section class="settings-section">
-          <h2>App config</h2>
+            <section id="app-config" class="settings-section tab-panel" hidden>
+              <h2>App config</h2>
           <div class="settings-grid">
             <label>
               Target language
@@ -176,22 +182,69 @@
             </label>
           </div>
 
-          <hr class="section-divider">
-          <h3>Config backup</h3>
-          <p class="section-note">导出和导入不会包含或覆盖 API Key。</p>
-          <div class="preset-actions">
-            <button type="button" id="export-settings" class="secondary">Export settings</button>
-            <button type="button" id="import-settings" class="secondary">Import settings</button>
-            <button type="button" id="restore-defaults" class="secondary danger">Restore defaults</button>
-          </div>
-          <input id="import-settings-file" type="file" accept="application/json,.json" hidden>
-        </section>
+            </section>
 
-        <div class="actions">
-          <button type="submit">Save settings</button>
-          <button type="button" id="test-model" class="secondary">Test model</button>
-          <button type="button" id="open-shortcuts" class="secondary">Keyboard shortcuts</button>
-          <span id="status" role="status"></span>
+            <section id="prompt-config" class="settings-section tab-panel" hidden>
+              <div class="section-title-row">
+                <h2>Prompt</h2>
+                <button type="button" id="restore-default-prompt" class="secondary">Default prompt</button>
+              </div>
+              <p class="section-note">Prompt 是全局配置，不会随 model preset 保存或切换。</p>
+              <label>
+                System prompt
+                <textarea name="systemPrompt" rows="10"></textarea>
+              </label>
+            </section>
+
+            <section id="keyboard-config" class="settings-section tab-panel" hidden>
+              <h2>Keyboard</h2>
+              <p class="section-note">Chrome 扩展快捷键需要在浏览器快捷键页面配置。</p>
+              <div class="shortcut-list">
+                <div class="shortcut-row">
+                  <div>
+                    <strong>Translate selected text</strong>
+                    <span>翻译当前选中文本</span>
+                  </div>
+                  <kbd>Alt+T</kbd>
+                </div>
+                <div class="shortcut-row">
+                  <div>
+                    <strong>Screenshot translation</strong>
+                    <span>框选屏幕区域并翻译</span>
+                  </div>
+                  <kbd>Alt+S</kbd>
+                </div>
+                <div class="shortcut-row">
+                  <div>
+                    <strong>Translate current page</strong>
+                    <span>翻译当前可见页</span>
+                  </div>
+                  <kbd>Alt+A</kbd>
+                </div>
+                <div class="shortcut-row">
+                  <div>
+                    <strong>Open side panel</strong>
+                    <span>打开侧边栏</span>
+                  </div>
+                  <kbd>Alt+Shift+Y</kbd>
+                </div>
+              </div>
+              <div class="single-action">
+                <button type="button" id="open-shortcuts" class="secondary">Configure shortcuts</button>
+              </div>
+            </section>
+
+            <section id="config-backup" class="settings-section tab-panel" hidden>
+              <h2>Config backup</h2>
+              <p class="section-note">导出和导入不会包含或覆盖 API Key。</p>
+              <div class="preset-actions">
+                <button type="button" id="export-settings" class="secondary">Export settings</button>
+                <button type="button" id="import-settings" class="secondary">Import settings</button>
+                <button type="button" id="restore-defaults" class="secondary danger">Restore defaults</button>
+              </div>
+              <input id="import-settings-file" type="file" accept="application/json,.json" hidden>
+            </section>
+          </div>
         </div>
       </form>
     </main>

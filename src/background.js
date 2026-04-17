@@ -32,8 +32,7 @@ const MODEL_SETTING_KEYS = [
   "thinkingEffort",
   "thinkingBudgetTokens",
   "thinkingFieldPreset",
-  "thinkingRequestFields",
-  "systemPrompt"
+  "thinkingRequestFields"
 ];
 
 const MENU_TRANSLATE_SELECTION = "translate-selection";
