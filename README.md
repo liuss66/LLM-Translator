@@ -2,12 +2,13 @@
 
 一个无构建步骤的 Chrome Manifest V3 扩展，用大模型完成网页/PDF 文本翻译、截图 OCR 翻译和当前页识别翻译。
 
-## v0.5.3 更新亮点
+## v0.6.0 更新亮点
 
-- 修复主页和侧边栏 `Think` 开关联动问题，切换后会同步写回当前模型预设。
-- 配置页模型列表新增 `Custom model...`，可在拉取模型列表后继续手动填写自定义模型名。
-- 主页和侧边栏的 `Model` 下拉框旁新增 `Lang` 目标语言选择，可快速切换翻译语言。
-- 模型相关设置保存逻辑会同步更新当前模型预设，避免切换页面后被旧配置覆盖。
+- 配置页改为左侧 Tab 导航，模型配置、应用配置、提示词、快捷键和配置备份分区展示。
+- 设置项改为自动保存，系统提示词与模型预设解耦，并支持一键恢复默认提示词。
+- 新增显示语言和主题色配置，Options、主页、侧边栏和悬浮窗统一同步主题色。
+- 主页和侧边栏布局进一步压缩，压缩参数移入 Options，主页仅保留常用开关。
+- 侧边栏参数区和提问区支持折叠，状态栏常驻；状态栏默认显示耗时和总 token，悬停显示 TTFT、TPS、上下行 token 和思考 token。
 
 ## 演示视频
 
@@ -22,17 +23,17 @@
 - 快捷键 `Alt+S` 或弹窗按钮进入截图框选模式。
 - 快捷键 `Alt+A` 或 `Page` 按钮翻译当前可见页，适合 PDF 当前页和扫描件。
 - 将截图区域或当前页发送给 OpenAI-compatible 多模态模型，先识别文字再翻译。
-- 支持流式输出、耗时显示和图片处理状态显示。
+- 支持流式输出、耗时显示、token 统计和悬停展开的性能指标。
 - 支持 OpenAI-compatible、Anthropic API 与本地 llama.cpp server。
 - 翻译结果支持 Markdown 展示。
 - 支持 Markdown 中的行内公式 `$...$`、`\(...\)` 和公式块 `$$...$$`、`\[...\]` 展示。
-- 支持自定义 API Base URL、API Key、模型和目标语言；同一个模型字段用于文本翻译、截图 OCR 和当前页识别。
+- 支持自定义 API Base URL、API Key、模型、目标语言、显示语言和主题色；同一个模型字段用于文本翻译、截图 OCR 和当前页识别。
 - 支持开关控制 OCR 原文、输入图片显示、截图压缩、当前页边距裁剪和思考模式。
 - 支持配置图片压缩参数：最大边长和 JPEG 质量。
 - 支持模型预设切换，切换前会测试模型连通性。
-- 支持模型列表获取和模型连通性测试按钮。
+- 支持模型列表获取和模型连通性测试按钮；llama.cpp server 可留空模型字段。
 - 支持常驻 Chrome 侧边栏；侧边栏开启后不再显示页面悬浮窗。
-- 侧边栏将参数区、回复区和提问框分区固定展示，截图翻译后可继续追问。
+- 侧边栏将参数区、回复区、状态栏和提问框分区固定展示，参数区和提问区可折叠，截图翻译后可继续追问。
 
 ## 安装
 
@@ -57,7 +58,7 @@
 - `Image`：显示实际送入模型的输入图片。
 - `Think`：控制是否向兼容模型请求思考模式；不同模型服务字段可能不同，可在选项页配置。
 - `Crop`：当前页识别时裁掉阅读器左右空白。
-- `Compress`：发送图片前按 `Edge` 和 `Quality` 参数压缩。
+- `Compress`：发送图片前按 Options 中的 `Max edge` 和 `JPEG quality` 参数压缩。
 
 ## 配置建议
 
@@ -70,6 +71,7 @@
 - `Thinking token budget` 用于支持 token 预算的服务，例如 Anthropic 的 `thinking.budget_tokens` 或 OpenRouter 的 `reasoning.max_tokens`。填 `0` 表示不发送预算字段。
 - `Custom thinking fields` 只在 `Field preset` 选择 Custom 时生效，支持按行填写字段路径：`thinking.type` 会自动映射为 `enabled` / `disabled`，`reasoning_effort` 和 `reasoning.effort` 会使用 `Thinking effort`，`reasoning.max_tokens` 和 `thinking.budget_tokens` 会使用 `Thinking token budget`，其他字段按布尔值发送。Qwen / 本地兼容服务可使用 `enable_thinking`、`chat_template_kwargs.enable_thinking`、`extra_body.enable_thinking`、`extra_body.chat_template_kwargs.enable_thinking`。
 - 如果模型仍然返回思考内容，插件会把 `<think>...</think>` 或 API 返回的 reasoning 字段放入默认折叠的 `Thinking` 区块，并在状态栏中用 `R:` 显示思考 token 估算。
+- `Display language` 控制插件界面语言，`Theme color` 会同步到 Options、主页、侧边栏、悬浮窗和框选区域。
 
 ## Markdown 展示
 

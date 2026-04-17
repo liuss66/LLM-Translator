@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LLM Translator",
-  "version": "0.5.3",
+  "version": "0.6.0",
   "description": "Translate selected text and selected screen regions with OpenAI-compatible or Anthropic models.",
   "permissions": [
     "activeTab",
