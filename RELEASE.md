@@ -1,10 +1,10 @@
-# Release v0.6.4
+# Release v0.6.5
 
 ## Changes
 
-- fix: remove broad `<all_urls>` host permissions from the manifest
-- fix: remove static all-sites content script registration
-- docs: explain that the extension now uses `activeTab` and dynamic script injection after user actions
+- fix: restore minimal localhost host permissions for local OpenAI-compatible and llama.cpp servers
+- docs: clarify that localhost permissions are only used for user-configured local model APIs
+- keep avoiding broad `<all_urls>` website access
 
 ## Notes
 
