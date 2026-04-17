@@ -10,21 +10,18 @@
   <body>
     <main>
       <section class="config-panel">
-        <header>
-          <h1>LLM Translator <span class="brand-mark">@Liuss</span></h1>
-          <div class="header-actions">
-            <button id="toggle-config" type="button" aria-expanded="true">Collapse</button>
-            <button id="open-options" type="button">Options</button>
+        <div class="config-actions-row">
+          <div class="primary-actions">
+            <button id="translate-selection" type="button">Text</button>
+            <button id="translate-region" type="button">Screenshot</button>
+            <button id="translate-page" type="button">Page</button>
           </div>
-        </header>
+          <button id="toggle-config" class="fold-button fold-button--top" type="button" aria-expanded="true" aria-controls="config-content">
+            <span aria-hidden="true">⌃</span>
+          </button>
+        </div>
 
         <div id="config-content" class="config-content">
-          <div class="actions">
-            <div class="primary-actions">
-              <button id="translate-selection" type="button">Text</button>
-              <button id="translate-region" type="button">Screenshot</button>
-              <button id="translate-page" type="button">Page</button>
-            </div>
             <div class="model-language-row">
               <label class="preset-row">
                 <span>Model</span>
@@ -65,16 +62,15 @@
                 <span class="toggle-ui" aria-hidden="true"></span>
                 <span>Compress</span>
               </label>
-              <label>
+              <label class="compression-param">
                 Edge
                 <input id="image-max-edge" type="number" min="320" max="4096" step="64">
               </label>
-              <label>
+              <label class="compression-param">
                 Quality
                 <input id="image-jpeg-quality" type="number" min="0.5" max="1" step="0.01">
               </label>
             </div>
-          </div>
         </div>
       </section>
 
@@ -101,19 +97,30 @@
       </section>
 
       <section class="answer-box" aria-label="Answer input">
-        <form id="chat-form">
-          <textarea
-            id="chat-input"
-            rows="3"
-            placeholder="Ask a question after screenshot translation"
-          ></textarea>
-          <div class="answer-actions">
-            <button type="submit">Ask</button>
-            <button id="stop-action" type="button" class="secondary" hidden>Stop</button>
-          </div>
-        </form>
+        <div class="answer-toolbar">
+          <button id="toggle-answer" class="fold-button fold-button--bottom" type="button" aria-expanded="true" aria-controls="answer-content">
+            <span aria-hidden="true">⌄</span>
+          </button>
+        </div>
+        <div id="answer-content" class="answer-content">
+          <form id="chat-form">
+            <textarea
+              id="chat-input"
+              rows="3"
+              placeholder="Ask a question after screenshot translation"
+            ></textarea>
+            <div class="answer-actions">
+              <button type="submit">Ask</button>
+              <button id="stop-action" type="button" class="secondary" hidden>Stop</button>
+            </div>
+          </form>
+        </div>
         <p id="status" role="status"></p>
       </section>
+
+      <button id="open-options" class="settings-fab" type="button" aria-label="Options" title="Options">
+        <span aria-hidden="true">⚙</span>
+      </button>
     </main>
     <script src="vendor/katex/katex.min.js"></script>
     <script src="markdown.js"></script>

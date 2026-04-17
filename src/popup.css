@@ -1,4 +1,6 @@
 :root {
+  --llmt-theme-color: #2da44e;
+  accent-color: var(--llmt-theme-color);
   color-scheme: light;
   font-family: Arial, Helvetica, sans-serif;
   color: #1b1f23;
@@ -31,19 +33,23 @@ h1 {
 
 button {
   width: 100%;
-  border: 1px solid #2da44e;
+  border: 1px solid var(--llmt-theme-color);
   border-radius: 6px;
   padding: 10px 12px;
   color: #ffffff;
-  background: #2da44e;
+  background: var(--llmt-theme-color);
   cursor: pointer;
   font: 700 14px/1.2 Arial, Helvetica, sans-serif;
 }
 
 button.secondary {
-  border-color: #d0d7de;
-  color: #1b1f23;
+  border-color: color-mix(in srgb, var(--llmt-theme-color) 38%, #d0d7de);
+  color: var(--llmt-theme-color);
   background: #f6f8fa;
+}
+
+button.secondary:hover {
+  background: color-mix(in srgb, var(--llmt-theme-color) 10%, #ffffff);
 }
 
 .primary-actions {
@@ -83,6 +89,13 @@ button.secondary {
   color: #1b1f23;
   background: #ffffff;
   font: 13px/1.3 Arial, Helvetica, sans-serif;
+}
+
+.preset-row select:focus-visible,
+.language-row select:focus-visible {
+  border-color: var(--llmt-theme-color);
+  outline: 2px solid color-mix(in srgb, var(--llmt-theme-color) 28%, transparent);
+  outline-offset: 1px;
 }
 
 @media (max-width: 260px) {
@@ -136,7 +149,7 @@ button.secondary {
 }
 
 .toggle-row input:checked + .toggle-ui {
-  background: #2da44e;
+  background: var(--llmt-theme-color);
 }
 
 .toggle-row input:checked + .toggle-ui::after {
@@ -144,13 +157,17 @@ button.secondary {
 }
 
 .image-settings {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .image-settings .toggle-row {
-  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.compression-param {
+  display: none !important;
 }
 
 .image-settings label:not(.toggle-row) {

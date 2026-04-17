@@ -1,4 +1,5 @@
 :root {
+  --llmt-theme-color: #2da44e;
   color-scheme: light;
   font-family: Arial, Helvetica, sans-serif;
   color: #263642;
@@ -90,12 +91,12 @@ form {
 
 .tab-button:hover {
   color: #1b1f23;
-  background: #eef6f8;
+  background: color-mix(in srgb, var(--llmt-theme-color) 10%, #ffffff);
 }
 
 .tab-button.active {
-  color: #d83b78;
-  background: #e8f3f6;
+  color: var(--llmt-theme-color);
+  background: color-mix(in srgb, var(--llmt-theme-color) 14%, #ffffff);
 }
 
 .tab-content {
@@ -209,7 +210,7 @@ label {
 }
 
 .toggle-row input:checked + .toggle-ui {
-  background: #2da44e;
+  background: var(--llmt-theme-color);
 }
 
 .toggle-row input:checked + .toggle-ui::after {
@@ -217,7 +218,7 @@ label {
 }
 
 .toggle-row input:focus-visible + .toggle-ui {
-  outline: 2px solid #0969da;
+  outline: 2px solid var(--llmt-theme-color);
   outline-offset: 2px;
 }
 
@@ -249,7 +250,7 @@ button {
   border-radius: 4px;
   padding: 10px 14px;
   color: #ffffff;
-  background: #53616c;
+  background: var(--llmt-theme-color);
   cursor: pointer;
   font-weight: 700;
 }
@@ -294,7 +295,7 @@ button.danger {
 }
 
 #status {
-  color: #d83b78;
+  color: var(--llmt-theme-color);
   font-size: 13px;
 }
 

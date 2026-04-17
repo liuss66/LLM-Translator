@@ -1,6 +1,7 @@
 .llmt-panel,
 .llmt-selection-layer {
   all: initial;
+  --llmt-theme-color: #2da44e;
   font-family: Arial, Helvetica, sans-serif;
 }
 
@@ -105,6 +106,14 @@
 .llmt-meta__value {
   color: #1b1f23;
   font-weight: 700;
+}
+
+.llmt-meta__details {
+  display: none;
+}
+
+.llmt-panel__meta:hover .llmt-meta__details {
+  display: inline;
 }
 
 .llmt-panel__image-wrap img {
@@ -364,7 +373,7 @@
 
 .llmt-panel__translation .llmt-footnote-ref a,
 .llmt-panel__translation .llmt-footnote-backref {
-  color: #0969da;
+  color: var(--llmt-theme-color);
   text-decoration: none;
 }
 
@@ -464,6 +473,6 @@
   box-sizing: border-box;
   width: 0;
   height: 0;
-  border: 2px solid #2da44e;
-  background: rgba(46, 160, 67, 0.12);
+  border: 2px solid var(--llmt-theme-color);
+  background: color-mix(in srgb, var(--llmt-theme-color) 14%, transparent);
 }
