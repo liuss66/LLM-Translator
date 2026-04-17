@@ -1,10 +1,10 @@
-# Release v0.6.5
+# Release v0.6.6
 
 ## Changes
 
-- fix: restore minimal localhost host permissions for local OpenAI-compatible and llama.cpp servers
-- docs: clarify that localhost permissions are only used for user-configured local model APIs
-- keep avoiding broad `<all_urls>` website access
+- fix: request optional API host permissions based on the configured API Base URL
+- fix: support custom cloud APIs, LAN IP APIs, and non-localhost local model servers without restoring broad website access
+- docs: explain the API endpoint permission flow
 
 ## Notes
 

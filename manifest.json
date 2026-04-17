@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LLM Translator",
-  "version": "0.6.5",
+  "version": "0.6.6",
   "description": "Translate selected text and selected screen regions with OpenAI-compatible or Anthropic models.",
   "permissions": [
     "activeTab",
@@ -15,6 +15,10 @@
   "host_permissions": [
     "http://127.0.0.1/*",
     "http://localhost/*"
+  ],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
   ],
   "background": {
     "service_worker": "src/background.js",

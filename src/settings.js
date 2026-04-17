@@ -115,6 +115,16 @@
     return normalizeSettings(stored);
   }
 
+  function apiPermissionPattern(apiBaseUrl) {
+    try {
+      const url = new URL(apiBaseUrl);
+      if (!["http:", "https:"].includes(url.protocol) || !url.hostname) return "";
+      return `${url.protocol}//${url.hostname}/*`;
+    } catch {
+      return "";
+    }
+  }
+
   function pickModelSettings(source) {
     return Object.fromEntries(
       MODEL_SETTING_KEYS.map((key) => [key, source?.[key] ?? DEFAULT_SETTINGS[key]])
@@ -131,6 +141,7 @@
     normalizeThemeColor,
     normalizeThinkingEffort,
     normalizeThinkingFieldPreset,
+    apiPermissionPattern,
     pickModelSettings,
     readStoredSettings
   });

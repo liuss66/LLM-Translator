@@ -7,6 +7,7 @@ const {
   normalizeThemeColor,
   normalizeThinkingEffort,
   normalizeThinkingFieldPreset,
+  apiPermissionPattern,
   pickModelSettings,
   readStoredSettings
 } = globalThis.LLMT_SETTINGS;
@@ -102,6 +103,7 @@ document.querySelector("#fetch-models").addEventListener("click", async () => {
   const fetchBtn = document.querySelector("#fetch-models");
   fetchBtn.disabled = true;
   try {
+    await requestApiHostPermission(apiBaseUrl);
     const normalizedBaseUrl = apiBaseUrl.replace(/\/+$/, "");
     const headers = { "Content-Type": "application/json" };
     if (apiKey) {
@@ -192,6 +194,7 @@ document.querySelector("#test-model").addEventListener("click", async () => {
   if (!reportFormValidity()) return;
   status.textContent = getUiMessage("testingModel");
   try {
+    await requestApiHostPermission(form.elements.apiBaseUrl.value);
     const response = await chrome.runtime.sendMessage({
       type: "test-model",
       settings: readFormSettings()
@@ -202,6 +205,17 @@ document.querySelector("#test-model").addEventListener("click", async () => {
     status.textContent = error.message || getUiMessage("modelTestFailed");
   }
 });
+
+async function requestApiHostPermission(apiBaseUrl) {
+  const origin = apiPermissionPattern(apiBaseUrl);
+  if (!origin || !chrome.permissions?.contains || !chrome.permissions?.request) return;
+  const alreadyGranted = await chrome.permissions.contains({ origins: [origin] });
+  if (alreadyGranted) return;
+  const granted = await chrome.permissions.request({ origins: [origin] });
+  if (!granted) {
+    throw new Error(formatUiMessage("apiPermissionDenied", origin));
+  }
+}
 
 document.querySelector("#open-shortcuts").addEventListener("click", () => {
   chrome.tabs.create({ url: "chrome://extensions/shortcuts" });
@@ -841,6 +855,7 @@ const OPTIONS_UI_TEXT = {
     noModelsReturned: "No models returned from API.",
     modelsFound: "Found {0} models.",
     fetchFailed: "Fetch failed:",
+    apiPermissionDenied: "API host permission was not granted for {0}.",
     testingModel: "Testing model...",
     modelTestFailed: "Model test failed.",
     modelTestPassed: "Model test passed:",
@@ -926,6 +941,7 @@ const OPTIONS_UI_TEXT = {
     noModelsReturned: "API 没有返回模型。",
     modelsFound: "找到 {0} 个模型。",
     fetchFailed: "获取失败：",
+    apiPermissionDenied: "未授予 API 地址权限：{0}。",
     testingModel: "正在测试模型...",
     modelTestFailed: "模型测试失败。",
     modelTestPassed: "模型测试通过：",

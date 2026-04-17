@@ -2,6 +2,11 @@
 
 一个无构建步骤的 Chrome Manifest V3 扩展，用大模型完成网页/PDF 文本翻译、截图 OCR 翻译和当前页识别翻译。
 
+## v0.6.6 更新亮点
+
+- 增加按 API Base URL 动态申请主机权限的机制，修复自定义云端 API、局域网 IP、本地非 localhost 服务请求失败的问题。
+- 固定权限仍只保留 `localhost/127.0.0.1`；其他 API 域名只在用户点击 `Fetch` 或 `Test model` 时按需授权。
+
 ## v0.6.5 更新亮点
 
 - 为本地模型服务恢复最小本地主机权限：`http://127.0.0.1/*` 和 `http://localhost/*`。
@@ -122,6 +127,7 @@
 - `scripting`：在用户触发翻译、截图或侧边栏操作后，向当前活动页面动态注入内容脚本，用于读取选中文本、框选区域和展示悬浮窗。
 - `storage`：保存模型配置、界面开关和最近一次翻译结果。
 - `http://127.0.0.1/*` / `http://localhost/*`：连接用户本机运行的 OpenAI-compatible 或 llama.cpp API 服务。
+- 可选 API 主机权限：当用户配置其他 API Base URL，并点击 `Fetch` 或 `Test model` 时，扩展会只请求该 API 域名的访问权限，例如 `https://api.example.com/*` 或 `http://192.168.1.20/*`。
 
 本扩展不再请求 `<all_urls>` 主机权限，也不再默认在所有网页上运行内容脚本；只有在用户明确触发翻译相关操作时，才通过 `activeTab` 获得当前标签页的临时访问能力。
 

@@ -7,6 +7,7 @@ const {
   clampNumber,
   normalizeThinkingEffort,
   normalizeThinkingFieldPreset,
+  apiPermissionPattern,
   pickModelSettings,
   readStoredSettings
 } = globalThis.LLMT_SETTINGS;
@@ -808,7 +809,17 @@ async function callModel(settings, model, messages, options = {}) {
   return callOpenAIChatCompletions(settings, model, messages, options);
 }
 
+async function assertApiHostPermission(settings) {
+  const origin = apiPermissionPattern(settings.apiBaseUrl);
+  if (!origin || !chrome.permissions?.contains) return;
+  const granted = await chrome.permissions.contains({ origins: [origin] });
+  if (!granted) {
+    throw new Error(`API host permission is missing for ${origin}. Open Options and click Test model or Fetch to grant access for this API endpoint.`);
+  }
+}
+
 async function callOpenAIChatCompletions(settings, model, messages, options = {}) {
+  await assertApiHostPermission(settings);
   const controller = new AbortController();
   activeModelControllers.add(controller);
   const metrics = options.metrics || createModelMetrics();
@@ -880,6 +891,7 @@ async function callOpenAIChatCompletions(settings, model, messages, options = {}
 }
 
 async function callAnthropicMessages(settings, model, messages, options = {}) {
+  await assertApiHostPermission(settings);
   const controller = new AbortController();
   activeModelControllers.add(controller);
   const metrics = options.metrics || createModelMetrics();
