@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LLM Translator",
-  "version": "0.6.3",
+  "version": "0.6.4",
   "description": "Translate selected text and selected screen regions with OpenAI-compatible or Anthropic models.",
   "permissions": [
     "activeTab",
@@ -11,9 +11,6 @@
     "sidePanel",
     "scripting",
     "storage"
-  ],
-  "host_permissions": [
-    "<all_urls>"
   ],
   "background": {
     "service_worker": "src/background.js",
@@ -27,16 +24,6 @@
     "default_path": "src/sidepanel.html"
   },
   "options_page": "src/options.html",
-  "web_accessible_resources": [
-    {
-      "resources": [
-        "src/vendor/katex/fonts/*.woff2"
-      ],
-      "matches": [
-        "<all_urls>"
-      ]
-    }
-  ],
   "commands": {
     "translate-selection": {
       "suggested_key": {
@@ -62,22 +49,5 @@
       },
       "description": "Open translator side panel"
     }
-  },
-  "content_scripts": [
-    {
-      "matches": [
-        "<all_urls>"
-      ],
-      "js": [
-        "src/vendor/katex/katex.min.js",
-        "src/markdown.js",
-        "src/content.js"
-      ],
-      "css": [
-        "src/vendor/katex/katex.min.css",
-        "src/content.css"
-      ],
-      "run_at": "document_idle"
-    }
-  ]
+  }
 }

@@ -1,9 +1,10 @@
-# Release v0.6.3
+# Release v0.6.4
 
 ## Changes
 
-- fix: remove the redundant `tabs` permission flagged by Chrome Web Store review
-- docs: update the permission list so it matches the current manifest
+- fix: remove broad `<all_urls>` host permissions from the manifest
+- fix: remove static all-sites content script registration
+- docs: explain that the extension now uses `activeTab` and dynamic script injection after user actions
 
 ## Notes
 
