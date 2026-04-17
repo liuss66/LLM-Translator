@@ -1,41 +1,15 @@
-const DEFAULT_SETTINGS = {
-  provider: "openai",
-  apiBaseUrl: "https://api.openai.com/v1",
-  apiKey: "",
-  textModel: "gpt-4o-mini",
-  visionModel: "gpt-4o-mini",
-  targetLanguage: "中文",
-  displayLanguage: "auto",
-  themeColor: "#2da44e",
-  showOcrResult: false,
-  showInputImage: false,
-  compressInputImage: true,
-  cropPageMargins: true,
-  imageMaxEdge: 1600,
-  imageJpegQuality: 0.88,
-  enableThinking: false,
-  thinkingEffort: "medium",
-  thinkingBudgetTokens: 0,
-  thinkingFieldPreset: "auto",
-  thinkingRequestFields:
-    "thinking.type\nenable_thinking\nchat_template_kwargs.enable_thinking\nextra_body.enable_thinking\nextra_body.chat_template_kwargs.enable_thinking",
-  currentPresetId: "",
-  modelPresets: [],
-  systemPrompt:
-    "You are a precise translation assistant. Preserve meaning, technical terms, formatting, and numbers. If you encounter images, charts, or other non-translatable content, insert a clear placeholder such as [此处应插入图 X.X] and briefly describe the image content in brackets if needed for context. Always return only the final translated text unless OCR extraction is explicitly requested."
-};
-const MODEL_SETTING_KEYS = [
-  "provider",
-  "apiBaseUrl",
-  "apiKey",
-  "textModel",
-  "visionModel",
-  "enableThinking",
-  "thinkingEffort",
-  "thinkingBudgetTokens",
-  "thinkingFieldPreset",
-  "thinkingRequestFields"
-];
+const {
+  DEFAULT_SETTINGS,
+  MODEL_SETTING_KEYS,
+  clampInteger,
+  clampNumber,
+  normalizeDisplayLanguage,
+  normalizeThemeColor,
+  normalizeThinkingEffort,
+  normalizeThinkingFieldPreset,
+  pickModelSettings,
+  readStoredSettings
+} = globalThis.LLMT_SETTINGS;
 
 const form = document.querySelector("#settings-form");
 const status = document.querySelector("#status");
@@ -379,11 +353,7 @@ document.querySelector("#delete-preset").addEventListener("click", async () => {
 });
 
 async function loadSettings() {
-  const settings = {
-    ...DEFAULT_SETTINGS,
-    ...(await chrome.storage.sync.get(Object.keys(DEFAULT_SETTINGS)))
-  };
-  settings.themeColor = normalizeThemeColor(settings.themeColor);
+  const settings = await readStoredSettings(chrome.storage.sync);
 
   modelPresets = Array.isArray(settings.modelPresets) ? settings.modelPresets : [];
   currentPresetId = modelPresets.some((item) => item.id === settings.currentPresetId) ? settings.currentPresetId : "";
@@ -704,12 +674,6 @@ async function applyImportedSettings(settings) {
   fillForm(next);
 }
 
-function pickModelSettings(source) {
-  return Object.fromEntries(
-    MODEL_SETTING_KEYS.map((key) => [key, source[key] ?? DEFAULT_SETTINGS[key]])
-  );
-}
-
 function pickPresetSettingsForLoad(preset) {
   const settings = pickModelSettings(preset);
   if (!preset.apiKey) {
@@ -774,42 +738,6 @@ function reportFormValidity() {
 
 function isPresetControl(target) {
   return target?.id === "preset-select" || target?.id === "preset-name";
-}
-
-function clampInteger(value, min, max, fallback) {
-  const number = Number.parseInt(value, 10);
-  if (!Number.isFinite(number)) return fallback;
-  return Math.min(max, Math.max(min, number));
-}
-
-function clampNumber(value, min, max, fallback) {
-  const number = Number.parseFloat(value);
-  if (!Number.isFinite(number)) return fallback;
-  return Math.min(max, Math.max(min, number));
-}
-
-function normalizeThinkingEffort(value) {
-  const effort = String(value || "").trim().toLowerCase();
-  return ["none", "minimal", "low", "medium", "high", "xhigh"].includes(effort)
-    ? effort
-    : DEFAULT_SETTINGS.thinkingEffort;
-}
-
-function normalizeThinkingFieldPreset(value) {
-  const preset = String(value || "").trim().toLowerCase();
-  return ["auto", "doubao", "custom"].includes(preset)
-    ? preset
-    : DEFAULT_SETTINGS.thinkingFieldPreset;
-}
-
-function normalizeDisplayLanguage(value) {
-  const language = String(value || "").trim();
-  return ["auto", "zh-CN", "en"].includes(language) ? language : DEFAULT_SETTINGS.displayLanguage;
-}
-
-function normalizeThemeColor(value) {
-  const color = String(value || "").trim();
-  return /^#[0-9a-f]{6}$/i.test(color) ? color.toLowerCase() : DEFAULT_SETTINGS.themeColor;
 }
 
 function applyThemeColor(value) {

@@ -1,41 +1,15 @@
-const DEFAULT_SETTINGS = {
-  provider: "openai",
-  apiBaseUrl: "https://api.openai.com/v1",
-  apiKey: "",
-  textModel: "gpt-4o-mini",
-  visionModel: "gpt-4o-mini",
-  targetLanguage: "中文",
-  displayLanguage: "auto",
-  themeColor: "#2da44e",
-  showOcrResult: false,
-  showInputImage: false,
-  compressInputImage: true,
-  cropPageMargins: true,
-  imageMaxEdge: 1600,
-  imageJpegQuality: 0.88,
-  enableThinking: false,
-  thinkingEffort: "medium",
-  thinkingBudgetTokens: 0,
-  thinkingFieldPreset: "auto",
-  thinkingRequestFields:
-    "thinking.type\nenable_thinking\nchat_template_kwargs.enable_thinking\nextra_body.enable_thinking\nextra_body.chat_template_kwargs.enable_thinking",
-  currentPresetId: "",
-  modelPresets: [],
-  systemPrompt:
-    "You are a precise translation assistant. Preserve meaning, technical terms, formatting, and numbers. If you encounter images, charts, or other non-translatable content, insert a clear placeholder such as [此处应插入图 X.X] and briefly describe the image content in brackets if needed for context. Always return only the final translated text unless OCR extraction is explicitly requested."
-};
-const MODEL_SETTING_KEYS = [
-  "provider",
-  "apiBaseUrl",
-  "apiKey",
-  "textModel",
-  "visionModel",
-  "enableThinking",
-  "thinkingEffort",
-  "thinkingBudgetTokens",
-  "thinkingFieldPreset",
-  "thinkingRequestFields"
-];
+import "./settings.js";
+
+const {
+  DEFAULT_SETTINGS,
+  MODEL_SETTING_KEYS,
+  clampInteger,
+  clampNumber,
+  normalizeThinkingEffort,
+  normalizeThinkingFieldPreset,
+  pickModelSettings,
+  readStoredSettings
+} = globalThis.LLMT_SETTINGS;
 
 const MENU_TRANSLATE_SELECTION = "translate-selection";
 const MENU_TRANSLATE_SCREENSHOT = "translate-screenshot-region";
@@ -619,36 +593,7 @@ async function getSettings() {
 }
 
 async function readSettings() {
-  const settings = {
-    ...DEFAULT_SETTINGS,
-    ...(await chrome.storage.sync.get(Object.keys(DEFAULT_SETTINGS)))
-  };
-
-  settings.apiBaseUrl = settings.apiBaseUrl.replace(/\/+$/, "");
-  settings.compressInputImage = Boolean(settings.compressInputImage);
-  settings.cropPageMargins = settings.cropPageMargins !== false;
-  settings.themeColor = normalizeThemeColor(settings.themeColor);
-  settings.imageMaxEdge = clampInteger(settings.imageMaxEdge, 320, 4096, DEFAULT_SETTINGS.imageMaxEdge);
-  settings.imageJpegQuality = clampNumber(
-    settings.imageJpegQuality,
-    0.5,
-    1,
-    DEFAULT_SETTINGS.imageJpegQuality
-  );
-  settings.enableThinking = Boolean(settings.enableThinking);
-  settings.thinkingEffort = normalizeThinkingEffort(settings.thinkingEffort);
-  settings.thinkingBudgetTokens = clampInteger(
-    settings.thinkingBudgetTokens,
-    0,
-    128000,
-    DEFAULT_SETTINGS.thinkingBudgetTokens
-  );
-  settings.thinkingFieldPreset = normalizeThinkingFieldPreset(settings.thinkingFieldPreset);
-  settings.thinkingRequestFields =
-    typeof settings.thinkingRequestFields === "string"
-      ? settings.thinkingRequestFields.trim()
-      : DEFAULT_SETTINGS.thinkingRequestFields;
-  return settings;
+  return readStoredSettings(chrome.storage.sync);
 }
 
 async function updateStoredSettings(partialSettings) {
@@ -698,12 +643,6 @@ async function switchModelPreset(presetId) {
     currentPresetId: preset.id
   });
   return { presetId: preset.id, settings: await readSettings() };
-}
-
-function pickModelSettings(source) {
-  return Object.fromEntries(
-    MODEL_SETTING_KEYS.map((key) => [key, source[key] ?? DEFAULT_SETTINGS[key]])
-  );
 }
 
 async function hideFloatingPanel(tabId) {
@@ -2001,33 +1940,3 @@ function validateRect(rect) {
   }
 }
 
-function clampInteger(value, min, max, fallback) {
-  const number = Number.parseInt(value, 10);
-  if (!Number.isFinite(number)) return fallback;
-  return Math.min(max, Math.max(min, number));
-}
-
-function clampNumber(value, min, max, fallback) {
-  const number = Number.parseFloat(value);
-  if (!Number.isFinite(number)) return fallback;
-  return Math.min(max, Math.max(min, number));
-}
-
-function normalizeThinkingEffort(value) {
-  const effort = String(value || "").trim().toLowerCase();
-  return ["none", "minimal", "low", "medium", "high", "xhigh"].includes(effort)
-    ? effort
-    : DEFAULT_SETTINGS.thinkingEffort;
-}
-
-function normalizeThinkingFieldPreset(value) {
-  const preset = String(value || "").trim().toLowerCase();
-  return ["auto", "doubao", "custom"].includes(preset)
-    ? preset
-    : DEFAULT_SETTINGS.thinkingFieldPreset;
-}
-
-function normalizeThemeColor(value) {
-  const color = String(value || "").trim();
-  return /^#[0-9a-f]{6}$/i.test(color) ? color.toLowerCase() : DEFAULT_SETTINGS.themeColor;
-}

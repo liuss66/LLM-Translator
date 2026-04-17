@@ -3,6 +3,6 @@
   "private": true,
   "scripts": {
     "package": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-extension.ps1",
-    "test": "node tests/markdown-render.test.js"
+    "test": "node tests/markdown-render.test.js && node tests/settings.test.js"
   }
 }
