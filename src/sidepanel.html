@@ -50,13 +50,13 @@
                 <span class="toggle-ui" aria-hidden="true"></span>
                 <span>Think</span>
               </label>
+            </div>
+            <div class="image-settings" aria-label="Image compression settings">
               <label class="toggle-row">
                 <input id="crop-page-margins" type="checkbox">
                 <span class="toggle-ui" aria-hidden="true"></span>
                 <span>Crop</span>
               </label>
-            </div>
-            <div class="image-settings" aria-label="Image compression settings">
               <label class="toggle-row">
                 <input id="compress-input-image" type="checkbox">
                 <span class="toggle-ui" aria-hidden="true"></span>
@@ -111,11 +111,13 @@
             ></textarea>
             <div class="answer-actions">
               <button type="submit">Ask</button>
-              <button id="stop-action" type="button" class="secondary" hidden>Stop</button>
             </div>
           </form>
         </div>
-        <p id="status" role="status"></p>
+        <div class="status-row">
+          <p id="status" role="status"></p>
+          <button id="stop-action" type="button" class="status-stop" hidden>Stop</button>
+        </div>
       </section>
 
       <button id="open-options" class="settings-fab" type="button" aria-label="Options" title="Options">

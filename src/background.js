@@ -43,6 +43,7 @@ const MENU_TRANSLATE_PAGE = "translate-current-page";
 let lastResult = null;
 const sidePanelPorts = new Set();
 const activeModelControllers = new Set();
+const activeModelReaders = new Set();
 
 chrome.runtime.onInstalled.addListener(async () => {
   const existing = await chrome.storage.sync.get(Object.keys(DEFAULT_SETTINGS));
@@ -1023,31 +1024,36 @@ async function readServerSentEvents(response, onEventData) {
 
   const decoder = new TextDecoder();
   let buffer = "";
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const parts = buffer.split(/\r?\n\r?\n/);
-    buffer = parts.pop() || "";
-    for (const part of parts) {
-      const data = part
-        .split(/\r?\n/)
-        .filter((line) => line.startsWith("data:"))
-        .map((line) => line.slice(5).trimStart())
-        .join("\n");
-      if (!data) continue;
+  activeModelReaders.add(reader);
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split(/\r?\n\r?\n/);
+      buffer = parts.pop() || "";
+      for (const part of parts) {
+        const data = part
+          .split(/\r?\n/)
+          .filter((line) => line.startsWith("data:"))
+          .map((line) => line.slice(5).trimStart())
+          .join("\n");
+        if (!data) continue;
+        await onEventData(data);
+      }
+    }
+
+    buffer += decoder.decode();
+    const data = buffer
+      .split(/\r?\n/)
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).trimStart())
+      .join("\n");
+    if (data) {
       await onEventData(data);
     }
-  }
-
-  buffer += decoder.decode();
-  const data = buffer
-    .split(/\r?\n/)
-    .filter((line) => line.startsWith("data:"))
-    .map((line) => line.slice(5).trimStart())
-    .join("\n");
-  if (data) {
-    await onEventData(data);
+  } finally {
+    activeModelReaders.delete(reader);
   }
 }
 
@@ -1620,6 +1626,9 @@ function findErrorText(value) {
 function cancelActiveModelRequests() {
   for (const controller of activeModelControllers) {
     controller.abort();
+  }
+  for (const reader of activeModelReaders) {
+    reader.cancel().catch(() => {});
   }
 }
 

@@ -84,7 +84,15 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   }
   if (
     areaName === "sync" &&
-    (changes.modelPresets || changes.currentPresetId || changes.provider || changes.textModel)
+    (changes.modelPresets ||
+      changes.currentPresetId ||
+      changes.provider ||
+      changes.textModel ||
+      changes.enableThinking ||
+      changes.thinkingEffort ||
+      changes.thinkingBudgetTokens ||
+      changes.thinkingFieldPreset ||
+      changes.thinkingRequestFields)
   ) {
     loadSettings();
   }

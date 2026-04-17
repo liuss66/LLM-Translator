@@ -235,6 +235,44 @@ textarea {
   font: 14px/1.4 Arial, Helvetica, sans-serif;
 }
 
+input[type="color"] {
+  width: 56px;
+  min-width: 56px;
+  height: 38px;
+  padding: 3px;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+input[type="color"]::-webkit-color-swatch {
+  border: 0;
+  border-radius: 3px;
+}
+
+.theme-color-control {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.theme-color-value {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  box-sizing: border-box;
+  border: 1px solid #c8d1da;
+  border-radius: 4px;
+  padding: 0 10px;
+  color: #263642;
+  background: color-mix(in srgb, var(--llmt-theme-color) 12%, #ffffff);
+  font: 700 13px/1.2 Consolas, Monaco, monospace;
+}
+
 textarea {
   resize: vertical;
 }

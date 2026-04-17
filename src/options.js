@@ -45,6 +45,7 @@ const importSettingsFile = document.querySelector("#import-settings-file");
 const displayLanguageSelect = document.querySelector("#display-language-select");
 const targetLanguageSelect = document.querySelector("#target-language-select");
 const targetLanguageCustom = document.querySelector("#target-language-custom");
+const themeColorValue = document.querySelector("#theme-color-value");
 const tabButtons = Array.from(document.querySelectorAll(".tab-button"));
 const tabPanels = Array.from(document.querySelectorAll(".tab-panel"));
 const modelSelect = form.elements.textModel;
@@ -62,6 +63,27 @@ const TARGET_LANGUAGE_OPTIONS = Array.from(targetLanguageSelect.options)
   .filter((value) => value !== "Custom");
 bootstrapThemeColor();
 loadSettings();
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== "sync" || isLoadingPreset) return;
+  if (changes.enableThinking) {
+    form.elements.enableThinking.checked = Boolean(changes.enableThinking.newValue);
+  }
+  if (changes.themeColor) {
+    form.elements.themeColor.value = normalizeThemeColor(changes.themeColor.newValue);
+    applyThemeColor(changes.themeColor.newValue);
+  }
+  if (changes.displayLanguage) {
+    displayLanguageSelect.value = normalizeDisplayLanguage(changes.displayLanguage.newValue);
+    applyOptionsDisplayLanguage(changes.displayLanguage.newValue);
+  }
+  if (changes.targetLanguage) {
+    setTargetLanguageValue(changes.targetLanguage.newValue);
+  }
+  if (changes.currentPresetId || changes.modelPresets) {
+    loadSettings();
+  }
+});
 
 form.addEventListener("change", async (event) => {
   if (isLoadingPreset) return;
@@ -489,9 +511,24 @@ function syncCustomModelInput() {
 
 async function saveSettings(message, options = {}) {
   const settings = readFormSettings();
+  const shouldSyncPreset =
+    !options.includePresetState &&
+    currentPresetId &&
+    modelPresets.some((preset) => preset.id === currentPresetId) &&
+    hasModelSettingKeys(settings);
+  if (shouldSyncPreset) {
+    const modelPatch = pickModelSettings(settings);
+    modelPresets = modelPresets.map((preset) =>
+      preset.id === currentPresetId ? { ...preset, ...modelPatch } : preset
+    );
+    settings.modelPresets = modelPresets;
+    settings.currentPresetId = currentPresetId;
+  }
   if (!options.includePresetState) {
-    delete settings.currentPresetId;
-    delete settings.modelPresets;
+    if (!shouldSyncPreset) {
+      delete settings.currentPresetId;
+      delete settings.modelPresets;
+    }
   }
   await chrome.storage.sync.set(settings);
   status.textContent = message;
@@ -500,6 +537,10 @@ async function saveSettings(message, options = {}) {
       status.textContent = "";
     }
   }, 1600);
+}
+
+function hasModelSettingKeys(settings) {
+  return MODEL_SETTING_KEYS.some((key) => Object.prototype.hasOwnProperty.call(settings, key));
 }
 
 function renderPresetOptions() {
@@ -772,7 +813,11 @@ function normalizeThemeColor(value) {
 }
 
 function applyThemeColor(value) {
-  document.documentElement.style.setProperty("--llmt-theme-color", normalizeThemeColor(value));
+  const themeColor = normalizeThemeColor(value);
+  document.documentElement.style.setProperty("--llmt-theme-color", themeColor);
+  if (themeColorValue) {
+    themeColorValue.textContent = themeColor.toUpperCase();
+  }
 }
 
 const OPTIONS_UI_TEXT = {
