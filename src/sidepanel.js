@@ -32,6 +32,7 @@ let currentImageUrl = "";
 let elapsedTimer = 0;
 let stickyStatus = "";
 let stickyStatusIsHtml = false;
+let autoFollowReply = true;
 const activeChatStreams = new Map();
 
 chrome.runtime.connect({ name: "sidepanel" });
@@ -102,7 +103,12 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") closeImagePreview();
 });
 
+replyArea.addEventListener("scroll", () => {
+  autoFollowReply = isReplyAreaNearBottom();
+}, { passive: true });
+
 document.querySelector("#translate-selection").addEventListener("click", async () => {
+  enableReplyAutoFollow();
   status.textContent = getSidePanelText("readingSelectedText");
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -118,10 +124,12 @@ document.querySelector("#translate-selection").addEventListener("click", async (
 });
 
 document.querySelector("#translate-region").addEventListener("click", async () => {
+  enableReplyAutoFollow();
   await sendAction({ type: "start-region-selection" }, getSidePanelText("selectArea"));
 });
 
 document.querySelector("#translate-page").addEventListener("click", async () => {
+  enableReplyAutoFollow();
   await sendAction({ type: "translate-current-page" }, getSidePanelText("translatingCurrentPage"));
 });
 
@@ -261,6 +269,7 @@ chatForm.addEventListener("submit", async (event) => {
   }
 
   chatInput.value = "";
+  enableReplyAutoFollow();
   const historyForRequest = chatHistory.slice();
   const requestId = createRequestId();
   appendChatMessage("user", question);
@@ -511,6 +520,7 @@ async function sendAction(message, pendingText) {
 }
 
 function renderResult(result) {
+  const shouldFollow = autoFollowReply || Boolean(result?.isStreaming && !currentResult?.isStreaming);
   const nextImageUrl = result?.imageUrl || "";
   const isNewScreenshotContext = Boolean(nextImageUrl && nextImageUrl !== currentImageUrl);
   currentResult = result || null;
@@ -546,6 +556,7 @@ function renderResult(result) {
     chatLog.innerHTML = "";
     setChatVisible(false);
   }
+  followReplyAreaIfNeeded(shouldFollow);
 }
 
 function renderResultStatus(result) {
@@ -713,7 +724,7 @@ function appendChatMessage(role, content) {
   message.querySelector(".copy-button").hidden = role === "assistant" && !content;
   message.dataset.copyText = content || "";
   chatLog.append(message);
-  scrollReplyAreaToBottom();
+  followReplyAreaIfNeeded(true);
   return message;
 }
 
@@ -751,15 +762,25 @@ function setChatMessageContent(message, content, { showCopy = true, reasoning = 
   if (lastHistoryItem?.role === "assistant") {
     lastHistoryItem.content = content || "";
   }
-  scrollReplyAreaToBottom();
+  followReplyAreaIfNeeded();
 }
 
 function createRequestId() {
   return `chat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function scrollReplyAreaToBottom() {
+function enableReplyAutoFollow() {
+  autoFollowReply = true;
+}
+
+function isReplyAreaNearBottom() {
+  return replyArea.scrollHeight - replyArea.scrollTop - replyArea.clientHeight < 56;
+}
+
+function followReplyAreaIfNeeded(force = false) {
+  if (!force && !autoFollowReply) return;
   replyArea.scrollTop = replyArea.scrollHeight;
+  autoFollowReply = true;
 }
 
 function clampInteger(value, min, max, fallback) {
