@@ -12,6 +12,7 @@ const TARGET_LANGUAGE_OPTIONS = ["中文", "English", "日本語", "한국어", 
 let currentDisplayLanguage = "en";
 let activeTabContext = null;
 
+bootstrapThemeColor();
 loadSettings();
 refreshActiveTabContext();
 
@@ -218,6 +219,11 @@ async function loadSettings() {
   applyPopupDisplayLanguage(settings.displayLanguage || "auto");
   renderTargetLanguageOptions(settings.targetLanguage || "中文");
   renderPresetOptions(settings);
+}
+
+async function bootstrapThemeColor() {
+  const { themeColor } = await chrome.storage.sync.get({ themeColor: "#2da44e" });
+  applyThemeColor(themeColor);
 }
 
 async function refreshActiveTabContext() {

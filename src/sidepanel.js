@@ -36,6 +36,7 @@ const activeChatStreams = new Map();
 
 chrome.runtime.connect({ name: "sidepanel" });
 setChatEnabled(false);
+bootstrapThemeColor();
 loadUiState();
 loadSettings();
 loadLastResult();
@@ -309,6 +310,11 @@ async function loadSettings() {
   applySidePanelDisplayLanguage(settings.displayLanguage || "auto");
   renderTargetLanguageOptions(settings.targetLanguage || "中文");
   renderPresetOptions(settings);
+}
+
+async function bootstrapThemeColor() {
+  const { themeColor } = await chrome.storage.sync.get({ themeColor: "#2da44e" });
+  applyThemeColor(themeColor);
 }
 
 function renderPresetOptions(settings) {

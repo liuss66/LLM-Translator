@@ -60,6 +60,7 @@ const IMPORTABLE_SETTING_KEYS = Object.keys(DEFAULT_SETTINGS).filter((key) => ke
 const TARGET_LANGUAGE_OPTIONS = Array.from(targetLanguageSelect.options)
   .map((option) => option.value)
   .filter((value) => value !== "Custom");
+bootstrapThemeColor();
 loadSettings();
 
 form.addEventListener("change", async (event) => {
@@ -73,6 +74,8 @@ form.addEventListener("input", (event) => {
   if (isPresetControl(event.target)) return;
   if (event.target === form.elements.themeColor) {
     applyThemeColor(event.target.value);
+    saveThemeColor(event.target.value);
+    return;
   }
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
@@ -215,6 +218,10 @@ targetLanguageSelect.addEventListener("change", async () => {
 displayLanguageSelect.addEventListener("change", async () => {
   applyOptionsDisplayLanguage(displayLanguageSelect.value);
   await saveSettings(getUiMessage("saved"));
+});
+
+form.elements.themeColor.addEventListener("change", async () => {
+  await saveThemeColor(form.elements.themeColor.value, getUiMessage("saved"));
 });
 
 document.querySelector("#export-settings").addEventListener("click", () => {
@@ -370,6 +377,24 @@ async function loadSettings() {
   presetSelect.value = currentPresetId;
   presetName.value = modelPresets.find((item) => item.id === currentPresetId)?.name || "";
   fillForm(displaySettings);
+}
+
+async function bootstrapThemeColor() {
+  const { themeColor } = await chrome.storage.sync.get({ themeColor: DEFAULT_SETTINGS.themeColor });
+  applyThemeColor(themeColor);
+}
+
+async function saveThemeColor(value, message = "") {
+  const themeColor = normalizeThemeColor(value);
+  form.elements.themeColor.value = themeColor;
+  applyThemeColor(themeColor);
+  await chrome.storage.sync.set({ themeColor });
+  if (message) {
+    status.textContent = message;
+    setTimeout(() => {
+      if (status.textContent === message) status.textContent = "";
+    }, 1600);
+  }
 }
 
 function fillForm(settings) {
