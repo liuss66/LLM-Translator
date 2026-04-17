@@ -30,6 +30,7 @@ let modelPresets = [];
 let currentPresetId = "";
 let isLoadingPreset = false;
 let fetchedModels = [];
+let statusTimer = 0;
 const EXPORT_VERSION = 1;
 const IMPORTABLE_SETTING_KEYS = Object.keys(DEFAULT_SETTINGS).filter((key) => key !== "apiKey");
 const TARGET_LANGUAGE_OPTIONS = Array.from(targetLanguageSelect.options)
@@ -380,12 +381,15 @@ async function saveThemeColor(value, message = "") {
   const themeColor = normalizeThemeColor(value);
   form.elements.themeColor.value = themeColor;
   applyThemeColor(themeColor);
-  await chrome.storage.sync.set({ themeColor });
-  if (message) {
-    status.textContent = message;
-    setTimeout(() => {
-      if (status.textContent === message) status.textContent = "";
-    }, 1600);
+  setOptionsStatus(getUiMessage("saving"), { tone: "saving", autoClear: false });
+  try {
+    await chrome.storage.sync.set({ themeColor });
+    setOptionsStatus(message || getUiMessage("saved"), { tone: "saved", autoClear: true });
+  } catch (error) {
+    setOptionsStatus(`${getUiMessage("saveFailed")} ${error.message || error}`, {
+      tone: "error",
+      autoClear: false
+    });
   }
 }
 
@@ -500,17 +504,38 @@ async function saveSettings(message, options = {}) {
       delete settings.modelPresets;
     }
   }
-  await chrome.storage.sync.set(settings);
-  status.textContent = message;
-  setTimeout(() => {
-    if (status.textContent === message) {
-      status.textContent = "";
-    }
-  }, 1600);
+  setOptionsStatus(getUiMessage("saving"), { tone: "saving", autoClear: false });
+  try {
+    await chrome.storage.sync.set(settings);
+    setOptionsStatus(message || getUiMessage("saved"), { tone: "saved", autoClear: true });
+  } catch (error) {
+    setOptionsStatus(`${getUiMessage("saveFailed")} ${error.message || error}`, {
+      tone: "error",
+      autoClear: false
+    });
+  }
 }
 
 function hasModelSettingKeys(settings) {
   return MODEL_SETTING_KEYS.some((key) => Object.prototype.hasOwnProperty.call(settings, key));
+}
+
+function setOptionsStatus(message, { tone = "", autoClear = false, clearAfter = 1600 } = {}) {
+  clearTimeout(statusTimer);
+  status.textContent = message || "";
+  if (tone) {
+    status.dataset.tone = tone;
+  } else {
+    delete status.dataset.tone;
+  }
+  if (autoClear && message) {
+    statusTimer = setTimeout(() => {
+      if (status.textContent === message) {
+        status.textContent = "";
+        delete status.dataset.tone;
+      }
+    }, clearAfter);
+  }
 }
 
 function renderPresetOptions() {
@@ -808,6 +833,8 @@ const OPTIONS_UI_TEXT = {
     shortcutSidePanel: "Open side panel",
     shortcutSidePanelDesc: "Open the translator side panel",
     saved: "Saved.",
+    saving: "Saving...",
+    saveFailed: "Save failed:",
     settingsAndPresetSaved: "Settings and preset saved.",
     enterApiBaseUrl: "Please enter API Base URL first.",
     fetchingModels: "Fetching models...",
@@ -891,6 +918,8 @@ const OPTIONS_UI_TEXT = {
     shortcutSidePanel: "打开侧边栏",
     shortcutSidePanelDesc: "打开翻译侧边栏",
     saved: "已保存。",
+    saving: "保存中...",
+    saveFailed: "保存失败：",
     settingsAndPresetSaved: "设置和预设已保存。",
     enterApiBaseUrl: "请先填写 API 地址。",
     fetchingModels: "正在获取模型...",

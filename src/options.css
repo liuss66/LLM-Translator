@@ -337,6 +337,18 @@ button.danger {
   font-size: 13px;
 }
 
+#status[data-tone="saving"] {
+  color: #57606a;
+}
+
+#status[data-tone="saved"] {
+  color: var(--llmt-theme-color);
+}
+
+#status[data-tone="error"] {
+  color: #cf222e;
+}
+
 .model-row {
   display: flex;
   align-items: flex-end;
