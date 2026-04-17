@@ -43,7 +43,7 @@
     }
 
     if (message?.type === "start-region-selection") {
-      startRegionSelection();
+      startRegionSelection(message.requestId || "");
       sendResponse({ ok: true });
       return;
     }
@@ -214,7 +214,7 @@
     return "";
   }
 
-  function startRegionSelection() {
+  function startRegionSelection(requestId = "") {
     removeSelectionLayer();
 
     selectionLayer = document.createElement("div");
@@ -268,7 +268,7 @@
         devicePixelRatio: window.devicePixelRatio
       };
       removeSelectionLayer();
-      chrome.runtime.sendMessage({ type: "region-selected", rect });
+      chrome.runtime.sendMessage({ type: "region-selected", rect, requestId });
     });
   }
 

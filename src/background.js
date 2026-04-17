@@ -18,6 +18,7 @@ let lastResult = null;
 const sidePanelPorts = new Set();
 const activeModelControllers = new Set();
 const activeModelReaders = new Set();
+const activeTabRequests = new Map();
 
 chrome.runtime.onInstalled.addListener(async () => {
   const existing = await chrome.storage.sync.get(Object.keys(DEFAULT_SETTINGS));
@@ -58,17 +59,17 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 
   if (info.menuItemId === MENU_TRANSLATE_SELECTION) {
     const text = info.selectionText || "";
-    runForTab(tab.id, () => translateSelection(tab.id, text));
+    runForTab(tab.id, (requestId) => translateSelection(tab.id, text, requestId));
     return;
   }
 
   if (info.menuItemId === MENU_TRANSLATE_SCREENSHOT) {
-    runForTab(tab.id, () => startRegionSelection(tab.id));
+    runForTab(tab.id, (requestId) => startRegionSelection(tab.id, requestId));
     return;
   }
 
   if (info.menuItemId === MENU_TRANSLATE_PAGE) {
-    runForTab(tab.id, () => translateCurrentPage(tab.id, tab.windowId));
+    runForTab(tab.id, (requestId) => translateCurrentPage(tab.id, tab.windowId, requestId));
   }
 });
 
@@ -77,19 +78,19 @@ chrome.commands.onCommand.addListener(async (command) => {
   if (!tab?.id) return;
 
   if (command === MENU_TRANSLATE_SELECTION) {
-    runForTab(tab.id, async () => {
-      await translateSelection(tab.id, await readSelectedTextFromTab(tab.id));
+    runForTab(tab.id, async (requestId) => {
+      await translateSelection(tab.id, await readSelectedTextFromTab(tab.id), requestId);
     });
     return;
   }
 
   if (command === MENU_TRANSLATE_SCREENSHOT) {
-    runForTab(tab.id, () => startRegionSelection(tab.id));
+    runForTab(tab.id, (requestId) => startRegionSelection(tab.id, requestId));
     return;
   }
 
   if (command === MENU_TRANSLATE_PAGE) {
-    runForTab(tab.id, () => translateCurrentPage(tab.id, tab.windowId));
+    runForTab(tab.id, (requestId) => translateCurrentPage(tab.id, tab.windowId, requestId));
     return;
   }
 
@@ -160,16 +161,16 @@ async function handleMessage(message, sender) {
 
   if (message?.type === "translate-current-page") {
     const tab = await getActiveTab();
-    await runForTab(tab.id, async () => {
-      await translateCurrentPage(tab.id, tab.windowId);
+    await runForTab(tab.id, async (requestId) => {
+      await translateCurrentPage(tab.id, tab.windowId, requestId);
     });
     return { ok: true };
   }
 
   if (message?.type === "translate-active-selection") {
     const tabId = await getActiveTabId();
-    await runForTab(tabId, async () => {
-      await translateSelection(tabId, message.text || (await readSelectedTextFromTab(tabId)));
+    await runForTab(tabId, async (requestId) => {
+      await translateSelection(tabId, message.text || (await readSelectedTextFromTab(tabId)), requestId);
     });
     return { ok: true };
   }
@@ -251,7 +252,10 @@ async function handleMessage(message, sender) {
     const tabId = sender.tab?.id;
     const windowId = sender.tab?.windowId;
     if (!tabId || !windowId) throw new Error("No source tab found.");
-    await translateScreenshotRegion(tabId, windowId, message.rect);
+    if (message.requestId && !isCurrentTabRequest(tabId, message.requestId)) {
+      return { ok: true, ignored: true };
+    }
+    await translateScreenshotRegion(tabId, windowId, message.rect, message.requestId);
     return { ok: true };
   }
 
@@ -291,16 +295,33 @@ function isValidWindowId(windowId) {
 }
 
 async function runForTab(tabId, task) {
+  const requestId = beginTabRequest(tabId);
   try {
-    await task();
+    await task(requestId);
   } catch (error) {
     console.error(error);
     await showResult(tabId, {
+      requestId,
       title: "Translation failed",
       source: "",
       translation: userFacingError(error) || "发生未知错误。"
     });
   }
+}
+
+function beginTabRequest(tabId) {
+  const requestId = createRequestId();
+  activeTabRequests.set(tabId, requestId);
+  return requestId;
+}
+
+function isCurrentTabRequest(tabId, requestId) {
+  return !requestId || activeTabRequests.get(tabId) === requestId;
+}
+
+function createRequestId() {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
 async function openSidePanel(tab) {
@@ -381,10 +402,11 @@ function collectSelectedText() {
   return parts.join("\n\n");
 }
 
-async function translateSelection(tabId, rawText) {
+async function translateSelection(tabId, rawText, requestId = beginTabRequest(tabId)) {
   const text = rawText.trim();
   if (!text) {
     await showResult(tabId, {
+      requestId,
       title: "No text selected",
       source: "",
       translation: "未检测到选中文本。请先在网页或 PDF 中选中文字；如果 PDF 选择失败，改用 Screenshot 或 Page 模式。"
@@ -394,6 +416,7 @@ async function translateSelection(tabId, rawText) {
 
   const startedAt = Date.now();
   await showResult(tabId, {
+    requestId,
     title: "Translating...",
     source: text,
     translation: "Waiting for model response.",
@@ -406,6 +429,7 @@ async function translateSelection(tabId, rawText) {
   const translation = await translateText(settings, text, async (partial) => {
     const output = modelOutputPayload(partial, metrics);
     await showResult(tabId, {
+      requestId,
       title: `Translating to ${settings.targetLanguage}...`,
       source: text,
       translation: output.answer,
@@ -417,6 +441,7 @@ async function translateSelection(tabId, rawText) {
   }, metrics);
   const output = modelOutputPayload(translation, metrics);
   await showResult(tabId, {
+    requestId,
     title: `Translated to ${settings.targetLanguage}`,
     source: text,
     translation: output.answer,
@@ -427,15 +452,16 @@ async function translateSelection(tabId, rawText) {
   });
 }
 
-async function startRegionSelection(tabId) {
+async function startRegionSelection(tabId, requestId = beginTabRequest(tabId)) {
   await ensureContentScript(tabId);
-  await chrome.tabs.sendMessage(tabId, { type: "start-region-selection" });
+  await chrome.tabs.sendMessage(tabId, { type: "start-region-selection", requestId });
 }
 
-async function translateScreenshotRegion(tabId, windowId, rect) {
+async function translateScreenshotRegion(tabId, windowId, rect, requestId = beginTabRequest(tabId)) {
   validateRect(rect);
   const startedAt = Date.now();
   await showResult(tabId, {
+    requestId,
     title: "Recognizing...",
     source: "",
     translation: "Capturing the selected area and asking the model to read it.",
@@ -446,15 +472,17 @@ async function translateScreenshotRegion(tabId, windowId, rect) {
   const dataUrl = await chrome.tabs.captureVisibleTab(windowId, { format: "png" });
   const croppedDataUrl = await cropDataUrl(dataUrl, rect);
   await translateScreenshotImage(tabId, croppedDataUrl, {
+    requestId,
     source: "Selected screen region",
     initialTitle: "Recognizing...",
     startedAt
   });
 }
 
-async function translateCurrentPage(tabId, windowId) {
+async function translateCurrentPage(tabId, windowId, requestId = beginTabRequest(tabId)) {
   const startedAt = Date.now();
   await showResult(tabId, {
+    requestId,
     title: "Recognizing current page...",
     source: "",
     translation: "Capturing the current visible page and asking the model to read it.",
@@ -474,6 +502,7 @@ async function translateCurrentPage(tabId, windowId) {
         }
       };
   await translateScreenshotImage(tabId, pageImage.dataUrl, {
+    requestId,
     source: "Current visible page",
     initialTitle: "Recognizing current page...",
     startedAt,
@@ -490,6 +519,7 @@ async function translateScreenshotImage(tabId, imageDataUrl, options) {
     cropInfo: options.cropInfo
   };
   await showResult(tabId, {
+    requestId: options.requestId,
     title: options.initialTitle,
     source: options.source,
     translation: "Waiting for model response.",
@@ -504,6 +534,7 @@ async function translateScreenshotImage(tabId, imageDataUrl, options) {
   const translation = await translateImage(settings, preparedImage.dataUrl, async (partial) => {
     const output = modelOutputPayload(partial, metrics);
     await showResult(tabId, {
+      requestId: options.requestId,
       title: `OCR translating to ${settings.targetLanguage}...`,
       source: options.source,
       translation: output.answer,
@@ -520,6 +551,7 @@ async function translateScreenshotImage(tabId, imageDataUrl, options) {
 
   const output = modelOutputPayload(translation, metrics);
   await showResult(tabId, {
+    requestId: options.requestId,
     title: `OCR translated to ${settings.targetLanguage}`,
     source: options.source,
     translation: output.answer,
@@ -557,7 +589,9 @@ async function injectContentAssets(tabId) {
 }
 
 async function showResult(tabId, payload) {
+  if (!isCurrentTabRequest(tabId, payload.requestId)) return;
   const settings = await getSettings();
+  if (!isCurrentTabRequest(tabId, payload.requestId)) return;
   lastResult = {
     ...payload,
     themeColor: settings.themeColor,
