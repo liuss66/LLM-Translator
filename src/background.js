@@ -1798,8 +1798,8 @@ async function cropPageCaptureMargins(dataUrl) {
   const pixels = context.getImageData(0, 0, width, height).data;
   const scanTop = Math.floor(height * 0.08);
   const scanBottom = Math.floor(height * 0.98);
-  const leftBackground = averageEdgeColor(pixels, width, height, 0, Math.max(2, Math.floor(width * 0.015)), scanTop, scanBottom);
-  const rightBackground = averageEdgeColor(
+  const leftBackground = sampleEdgeBackground(pixels, width, height, 0, Math.max(2, Math.floor(width * 0.015)), scanTop, scanBottom);
+  const rightBackground = sampleEdgeBackground(
     pixels,
     width,
     height,
@@ -1861,20 +1861,34 @@ function getPageCropSkipReason({ left, right, croppedWidth, removedWidth, width 
   return "";
 }
 
-function averageEdgeColor(pixels, width, height, startX, endX, startY, endY) {
+function sampleEdgeBackground(pixels, width, height, startX, endX, startY, endY) {
   const color = [0, 0, 0];
+  const samples = [];
   let count = 0;
   const stepY = Math.max(4, Math.floor(height / 160));
   for (let y = startY; y < endY; y += stepY) {
     for (let x = startX; x < endX; x += 1) {
       const offset = (y * width + x) * 4;
-      color[0] += pixels[offset];
-      color[1] += pixels[offset + 1];
-      color[2] += pixels[offset + 2];
+      const sample = [pixels[offset], pixels[offset + 1], pixels[offset + 2]];
+      color[0] += sample[0];
+      color[1] += sample[1];
+      color[2] += sample[2];
+      samples.push(sample);
       count += 1;
     }
   }
-  return count ? color.map((value) => value / count) : [255, 255, 255];
+  const average = count ? color.map((value) => value / count) : [255, 255, 255];
+  const variance = samples.reduce((sum, sample) => {
+    const distance = colorDistance(sample[0], sample[1], sample[2], average);
+    return sum + distance * distance;
+  }, 0) / Math.max(1, samples.length);
+  const noise = Math.sqrt(variance);
+  const brightness = averageBrightness(average);
+  return {
+    color: average,
+    brightness,
+    tolerance: Math.min(58, Math.max(18, noise * 3 + 14))
+  };
 }
 
 function findHorizontalContentEdge(pixels, width, height, background, direction, startY, endY) {
@@ -1882,32 +1896,57 @@ function findHorizontalContentEdge(pixels, width, height, background, direction,
   const endX = direction > 0 ? width : -1;
   const stepY = Math.max(6, Math.floor(height / 140));
   const columnStep = direction > 0 ? 1 : -1;
+  const requiredRun = Math.max(3, Math.floor(width * 0.0025));
+  let runStart = -1;
+  let runLength = 0;
   for (let x = startX; x !== endX; x += columnStep) {
     if (isDocumentColumn(pixels, width, x, background, startY, endY, stepY)) {
-      return x;
+      if (runLength === 0) runStart = x;
+      runLength += 1;
+      if (runLength >= requiredRun) {
+        return direction > 0 ? runStart : x;
+      }
+    } else {
+      runStart = -1;
+      runLength = 0;
     }
   }
   return direction > 0 ? 0 : width - 1;
 }
 
 function isDocumentColumn(pixels, width, x, background, startY, endY, stepY) {
-  let documentLike = 0;
+  const score = documentColumnScore(pixels, width, x, background, startY, endY, stepY);
+  return score > 0.14;
+}
+
+function documentColumnScore(pixels, width, x, background, startY, endY, stepY) {
+  let contentLike = 0;
   let total = 0;
-  const backgroundBrightness = (background[0] + background[1] + background[2]) / 3;
-  const useBrightPageDetection = backgroundBrightness < 245;
   for (let y = startY; y < endY; y += stepY) {
     const offset = (y * width + x) * 4;
     const r = pixels[offset];
     const g = pixels[offset + 1];
     const b = pixels[offset + 2];
-    const distance = colorDistance(r, g, b, background);
+    const distance = colorDistance(r, g, b, background.color);
     const brightness = (r + g + b) / 3;
-    if (distance > 22 || (useBrightPageDetection && brightness > 248)) {
-      documentLike += 1;
+    const brightPageOnDarkBackground = background.brightness < 120 && brightness > Math.max(180, background.brightness + 70);
+    const darkPageOnLightBackground = background.brightness > 135 && brightness < Math.min(80, background.brightness - 70);
+    const inkOnDarkPage = background.brightness < 70 && distance > Math.max(14, background.tolerance * 0.8);
+    if (
+      distance > background.tolerance ||
+      brightPageOnDarkBackground ||
+      darkPageOnLightBackground ||
+      inkOnDarkPage
+    ) {
+      contentLike += 1;
     }
     total += 1;
   }
-  return total > 0 && documentLike / total > 0.18;
+  return total > 0 ? contentLike / total : 0;
+}
+
+function averageBrightness(color) {
+  return (color[0] + color[1] + color[2]) / 3;
 }
 
 function colorDistance(r, g, b, color) {
