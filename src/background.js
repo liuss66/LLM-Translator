@@ -1809,8 +1809,17 @@ async function cropPageCaptureMargins(dataUrl) {
     scanBottom
   );
 
-  const left = findHorizontalContentEdge(pixels, width, height, leftBackground, 1, scanTop, scanBottom);
-  let right = findHorizontalContentEdge(pixels, width, height, rightBackground, -1, scanTop, scanBottom);
+  const pageBounds = findHorizontalPageBounds(
+    pixels,
+    width,
+    height,
+    leftBackground,
+    rightBackground,
+    scanTop,
+    scanBottom
+  );
+  const left = pageBounds?.left ?? findHorizontalContentEdge(pixels, width, height, leftBackground, 1, scanTop, scanBottom);
+  let right = pageBounds?.right ?? findHorizontalContentEdge(pixels, width, height, rightBackground, -1, scanTop, scanBottom);
   if (left > width * 0.05 && right >= width - 1) {
     right = Math.max(left + 1, width - left - 1);
   }
@@ -1889,6 +1898,86 @@ function sampleEdgeBackground(pixels, width, height, startX, endX, startY, endY)
     brightness,
     tolerance: Math.min(58, Math.max(18, noise * 3 + 14))
   };
+}
+
+function findHorizontalPageBounds(pixels, width, height, leftBackground, rightBackground, startY, endY) {
+  const stepY = Math.max(6, Math.floor(height / 140));
+  const scores = new Array(width);
+  for (let x = 0; x < width; x += 1) {
+    const background = x < width / 2 ? leftBackground : rightBackground;
+    scores[x] = documentColumnScore(pixels, width, x, background, startY, endY, stepY);
+  }
+
+  const smoothed = smoothScores(scores, Math.max(2, Math.floor(width * 0.002)));
+  const threshold = 0.12;
+  const rawRuns = [];
+  let start = -1;
+  for (let x = 0; x < width; x += 1) {
+    if (smoothed[x] >= threshold) {
+      if (start < 0) start = x;
+    } else if (start >= 0) {
+      rawRuns.push({ left: start, right: x - 1 });
+      start = -1;
+    }
+  }
+  if (start >= 0) {
+    rawRuns.push({ left: start, right: width - 1 });
+  }
+
+  const runs = mergeCloseRuns(rawRuns, Math.max(8, Math.floor(width * 0.006)));
+  const minMainPageWidth = Math.max(96, Math.floor(width * 0.18));
+  const candidates = runs
+    .map((run) => ({
+      ...run,
+      width: run.right - run.left + 1,
+      centerDistance: Math.abs((run.left + run.right) / 2 - width / 2)
+    }))
+    .filter((run) => run.width >= minMainPageWidth);
+
+  if (candidates.length === 0) return null;
+  candidates.sort((a, b) => b.width - a.width || a.centerDistance - b.centerDistance);
+  const best = candidates[0];
+  return { left: best.left, right: best.right };
+}
+
+function smoothScores(scores, radius) {
+  const output = new Array(scores.length);
+  let sum = 0;
+  let count = 0;
+  for (let x = 0; x < scores.length; x += 1) {
+    sum += scores[x];
+    count += 1;
+    const removeIndex = x - radius * 2 - 1;
+    if (removeIndex >= 0) {
+      sum -= scores[removeIndex];
+      count -= 1;
+    }
+    const target = Math.max(0, x - radius);
+    output[target] = sum / count;
+  }
+  for (let x = Math.max(0, scores.length - radius); x < scores.length; x += 1) {
+    const from = Math.max(0, x - radius);
+    const to = Math.min(scores.length - 1, x + radius);
+    let localSum = 0;
+    for (let index = from; index <= to; index += 1) {
+      localSum += scores[index];
+    }
+    output[x] = localSum / (to - from + 1);
+  }
+  return output;
+}
+
+function mergeCloseRuns(runs, maxGap) {
+  const merged = [];
+  for (const run of runs) {
+    const previous = merged[merged.length - 1];
+    if (previous && run.left - previous.right - 1 <= maxGap) {
+      previous.right = run.right;
+    } else {
+      merged.push({ ...run });
+    }
+  }
+  return merged;
 }
 
 function findHorizontalContentEdge(pixels, width, height, background, direction, startY, endY) {
